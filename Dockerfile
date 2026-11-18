@@ -1,6 +1,6 @@
-FROM eclipse-temurin:27-jdk-jammy
+FROM maven:3.9-eclipse-temurin-21
 WORKDIR /app
 COPY . .
-RUN ./mvnw clean package -DskipTests || mvn clean package -DskipTests
+RUN mvn clean package -DskipTests
 EXPOSE 8080
-CMD ["mvn", "exec:java", "-Dexec.mainClass=\"software.ulpgc.chess.Main\""]
+CMD ["mvn", "exec:java", "-Dexec.mainClass=software.ulpgc.chess.Main"]
