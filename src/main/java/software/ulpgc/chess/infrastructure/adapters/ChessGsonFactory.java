@@ -19,7 +19,7 @@ public class ChessGsonFactory {
     }
 
     private static class BoardAdapter implements JsonSerializer<Board>, JsonDeserializer<Board> {
-        private static final Type MAP_TYPE = new TypeToken>() {}.getType();
+        private static final Type MAP_TYPE = TypeToken.getParameterized(Map.class, String.class, String.class).getType();
 
         @Override
         public JsonElement serialize(Board board, Type typeOfSrc, JsonSerializationContext context) {
