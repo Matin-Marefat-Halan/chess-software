@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Rooms - Arquitectura Hexagonal</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-icon">♞</span>
+        <div>
+            <h1>Chess Rooms</h1>
+            <p class="subtitle">Sistema distribuido de salas de ajedrez</p>
+        </div>
+    </div>
+    <div class="adapter-switch">
+        <label for="adapterSelect">Adaptador de comunicación:</label>
+        <select id="adapterSelect">
+            <option value="http">HTTP Backend (Javalin API)</option>
+            <option value="mock">Mock Local (Doble de prueba)</option>
+        </select>
+    </div>
+</header>
+
+<main class="container">
+    <section id="lobbyView" class="lobby-grid">
+        <div class="card">
+            <h2>Tu identidad</h2>
+            <label for="playerNameInput">Nombre de usuario</label>
+            <input type="text" id="playerNameInput" placeholder="Ej. Carlos" maxlength="24">
+            <p class="hint">Usa dos pestañas con nombres distintos para simular una partida completa.</p>
+        </div>
+
+        <div class="card">
+            <h2>Crear nueva sala</h2>
+            <p class="hint">Genera una sala privada con código único y juega con piezas blancas.</p>
+            <button id="createRoomBtn" class="btn btn-primary">Crear sala privada</button>
+        </div>
+
+        <div class="card">
+            <h2>Unirse con código</h2>
+            <label for="roomCodeInput">Código de sala (6 caracteres)</label>
+            <div class="inline-form">
+                <input type="text" id="roomCodeInput" placeholder="Ej. A7K9P2" maxlength="6">
+                <button id="joinRoomBtn" class="btn btn-secondary">Unirse</button>
+            </div>
+        </div>
+
+        <div class="card full-width">
+            <div class="card-header">
+                <h2>Salas registradas e histórico</h2>
+                <button id="refreshRoomsBtn" class="btn btn-ghost">Actualizar lista</button>
+            </div>
+            <div id="roomsList" class="rooms-list"></div>
+        </div>
+    </section>
+
+    <section id="gameView" class="game-layout hidden">
+        <div class="board-column">
+            <div class="room-banner">
+                <div>
+                    <span id="roomStatusBadge" class="badge">WAITING</span>
+                    <span id="roleBadge" class="badge badge-role">ESPECTADOR</span>
+                    <strong class="code-tag">Código: <span id="activeRoomCode">------</span></strong>
+                </div>
+                <button id="backToLobbyBtn" class="btn btn-ghost">Volver al lobby</button>
+            </div>
+
+            <div class="players-bar">
+                <div id="blackPlayerCard" class="player-pill">
+                    <span>♚ Negras:</span>
+                    <strong id="blackPlayerName">Esperando rival...</strong>
+                </div>
+                <div id="turnIndicator" class="turn-pill">Turno: Blancas</div>
+                <div id="whitePlayerCard" class="player-pill">
+                    <span>♔ Blancas:</span>
+                    <strong id="whitePlayerName">-</strong>
+                </div>
+            </div>
+
+            <div id="chessBoard" class="chess-board"></div>
+
+            <div class="board-actions">
+                <button id="resignBtn" class="btn btn-danger">Abandonar partida</button>
+                <div class="replay-controls">
+                    <button id="replayPrevBtn" class="btn btn-ghost" title="Jugada anterior">◀</button>
+                    <span id="replayLabel">En vivo</span>
+                    <button id="replayNextBtn" class="btn btn-ghost" title="Jugada siguiente">▶</button>
+                    <button id="replayLiveBtn" class="btn btn-ghost">Actual</button>
+                </div>
+            </div>
+        </div>
+
+        <aside class="history-column card">
+            <h3>Historial de movimientos</h3>
+            <p class="hint">Haz clic en cualquier jugada para inspeccionar el tablero en ese instante.</p>
+            <ol id="movesHistoryList" class="moves-list"></ol>
+        </aside>
+    </section>
+
+    <div id="toastMessage" class="toast hidden"></div>
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
