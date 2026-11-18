@@ -10,10 +10,10 @@ export class HttpChessAdapter extends ChessServicePort {
         return await this.#request("/api/rooms", { method: "GET" });
     }
 
-    async createRoom(player, timeLimitSeconds = 0) {
+    async createRoom(player, timeLimitSeconds = 0, vsBot = false) {
         return await this.#request("/api/rooms", {
             method: "POST",
-            body: JSON.stringify({ player, timeLimitSeconds })
+            body: JSON.stringify({ player, timeLimitSeconds, vsBot })
         });
     }
 

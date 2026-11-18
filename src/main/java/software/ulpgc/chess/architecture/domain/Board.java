@@ -19,14 +19,24 @@ public final class Board {
     }
 
     public Board move(Square from, Square to) {
+        return move(from, to, null);
+    }
+
+    public Board move(Square from, Square to, Move lastMove) {
         MovementValidator validator = new MovementValidator();
-        if (!validator.isValidMove(this, from, to)) {
+        if (!validator.isValidMove(this, from, to, lastMove)) {
             throw new IllegalArgumentException("Invalid move from " + from.notation() + " to " + to.notation());
         }
         Piece moving = pieceAt(from);
+        Piece targetBeforeMove = pieceAt(to);
         Map<Square, Piece> updated = new HashMap<>(pieces);
         updated.remove(from);
         updated.put(to, promoteIfEligible(moving, to));
+
+        if (moving.isPawn() && from.file() != to.file() && targetBeforeMove == null) {
+            Square capturedPawnSquare = new Square(to.file(), from.rank());
+            updated.remove(capturedPawnSquare);
+        }
 
         if (moving.isKing() && Math.abs(to.file().index() - from.file().index()) == 2) {
             boolean kingSide = to.file() == File.G;

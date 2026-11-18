@@ -11,11 +11,11 @@ export class RoomInteractionUseCases {
         return await this.chessService.listRooms();
     }
 
-    async createRoom(playerName, timeLimitSeconds = 0) {
+    async createRoom(playerName, timeLimitSeconds = 0, vsBot = false) {
         if (!playerName || !playerName.trim()) {
             throw new Error("Introduce tu nombre de usuario antes de crear una sala");
         }
-        return await this.chessService.createRoom(playerName.trim(), timeLimitSeconds);
+        return await this.chessService.createRoom(playerName.trim(), timeLimitSeconds, vsBot);
     }
 
     async joinRoom(roomCode, playerName) {

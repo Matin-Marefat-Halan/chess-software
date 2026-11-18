@@ -1,5 +1,5 @@
 import { ChessServicePort } from "../ports/ChessServicePort.js";
-import { createInitialBoardMap } from "../domain/ChessModels.js";
+import { createInitialBoardMap, getValidMovesForSquare } from "../domain/ChessModels.js";
 
 export class MockChessAdapter extends ChessServicePort {
     constructor() {
@@ -12,7 +12,7 @@ export class MockChessAdapter extends ChessServicePort {
         return Array.from(this.rooms.values()).reverse();
     }
 
-    async createRoom(player, timeLimitSeconds = 0) {
+    async createRoom(player, timeLimitSeconds = 0, vsBot = false) {
         const roomId = crypto.randomUUID();
         const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
         const now = new Date().toISOString();
@@ -21,9 +21,9 @@ export class MockChessAdapter extends ChessServicePort {
             roomId,
             roomCode,
             whitePlayer: player,
-            blackPlayer: null,
+            blackPlayer: vsBot ? "ChessBot" : null,
             currentTurn: "White",
-            status: "WAITING",
+            status: vsBot ? "PLAYING" : "WAITING",
             winner: null,
             board: createInitialBoardMap(),
             moves: [],
@@ -65,6 +65,23 @@ export class MockChessAdapter extends ChessServicePort {
     async makeMove(roomId, player, from, to) {
         const room = this.rooms.get(roomId);
         if (!room) throw new Error(`Room not found: ${roomId}`);
+        this.#applySingleMove(room, player, from, to);
+
+        if (room.status === "PLAYING" && room.blackPlayer === "ChessBot" && room.currentTurn === "Black") {
+            const blackSquares = Object.keys(room.board).filter(sq => room.board[sq].startsWith("Black"));
+            for (const sq of blackSquares) {
+                const legal = getValidMovesForSquare(room.board, sq, room.moves);
+                if (legal.length > 0) {
+                    this.#applySingleMove(room, "ChessBot", sq, legal[0].coord);
+                    break;
+                }
+            }
+        }
+
+        return structuredClone(room);
+    }
+
+    #applySingleMove(room, player, from, to) {
         if (room.status !== "PLAYING") throw new Error("Game is not currently active");
         const expectedPlayer = room.currentTurn === "White" ? room.whitePlayer : room.blackPlayer;
         if (!expectedPlayer || expectedPlayer.toLowerCase() !== player.toLowerCase()) {
@@ -74,7 +91,11 @@ export class MockChessAdapter extends ChessServicePort {
         if (!piece || !piece.startsWith(room.currentTurn)) {
             throw new Error(`No valid piece of your color at ${from}`);
         }
+        const targetWasEmpty = !room.board[to];
         delete room.board[from];
+        if ((piece === "WhitePawn" || piece === "BlackPawn") && from[0] !== to[0] && targetWasEmpty) {
+            delete room.board[`${to[0]}${from[1]}`];
+        }
         room.board[to] = piece;
         if ((piece === "WhiteKing" || piece === "BlackKing") && Math.abs(to.charCodeAt(0) - from.charCodeAt(0)) === 2) {
             const rank = from[1];
@@ -96,7 +117,6 @@ export class MockChessAdapter extends ChessServicePort {
         });
         room.currentTurn = room.currentTurn === "White" ? "Black" : "White";
         room.lastMoveTimestamp = now;
-        return structuredClone(room);
     }
 
     async resignGame(roomId, player) {

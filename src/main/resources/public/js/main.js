@@ -22,6 +22,7 @@ const elements = {
     lobbyView: document.getElementById("lobbyView"),
     gameView: document.getElementById("gameView"),
     playerNameInput: document.getElementById("playerNameInput"),
+    opponentModeSelect: document.getElementById("opponentModeSelect"),
     timeLimitSelect: document.getElementById("timeLimitSelect"),
     roomCodeInput: document.getElementById("roomCodeInput"),
     createRoomBtn: document.getElementById("createRoomBtn"),
@@ -32,6 +33,7 @@ const elements = {
     roomStatusBadge: document.getElementById("roomStatusBadge"),
     roleBadge: document.getElementById("roleBadge"),
     activeRoomCode: document.getElementById("activeRoomCode"),
+    copyInviteBtn: document.getElementById("copyInviteBtn"),
     backToLobbyBtn: document.getElementById("backToLobbyBtn"),
     whitePlayerCard: document.getElementById("whitePlayerCard"),
     blackPlayerCard: document.getElementById("blackPlayerCard"),
@@ -81,7 +83,7 @@ function showToast(message, isError = false) {
     clearTimeout(elements.toastMessage._timer);
     elements.toastMessage._timer = setTimeout(() => {
         elements.toastMessage.classList.add("hidden");
-    }, 3200);
+    }, 3500);
 }
 
 async function refreshLobby() {
@@ -336,8 +338,9 @@ async function handleSquareClick(coord) {
 async function handleCreateRoom() {
     try {
         const timeLimit = parseInt(elements.timeLimitSelect.value, 10) || 0;
-        const room = await useCases.createRoom(getPlayerName(), timeLimit);
-        showToast(`Sala creada con código ${room.roomCode}`);
+        const vsBot = elements.opponentModeSelect.value === "bot";
+        const room = await useCases.createRoom(getPlayerName(), timeLimit, vsBot);
+        showToast(vsBot ? "Partida contra ChessBot iniciada" : `Sala creada con código ${room.roomCode}`);
         enterRoom(room);
     } catch (error) {
         showToast(error.message, true);
@@ -351,6 +354,17 @@ async function handleJoinByCode(code) {
         enterRoom(room);
     } catch (error) {
         showToast(error.message, true);
+    }
+}
+
+async function handleCopyInviteLink() {
+    if (!state.currentRoom) return;
+    const inviteUrl = `${window.location.origin}/?room=${state.currentRoom.roomCode}`;
+    try {
+        await navigator.clipboard.writeText(inviteUrl);
+        showToast(`Enlace copiado: ${inviteUrl}`);
+    } catch (error) {
+        showToast(`Comparte este enlace: ${inviteUrl}`);
     }
 }
 
@@ -376,6 +390,16 @@ async function handleClearHistory() {
     }
 }
 
+function checkInviteLinkOnLoad() {
+    const params = new URLSearchParams(window.location.search);
+    const invitedCode = params.get("room");
+    if (invitedCode) {
+        elements.roomCodeInput.value = invitedCode.trim().toUpperCase();
+        elements.playerNameInput.focus();
+        showToast(`Invitación detectada para sala ${invitedCode.trim().toUpperCase()}. Escribe tu nombre y pulsa Unirse.`);
+    }
+}
+
 elements.adapterSelect.addEventListener("change", event => {
     const selected = event.target.value;
     useCases.setService(selected === "mock" ? mockAdapter : httpAdapter);
@@ -391,6 +415,7 @@ elements.createRoomBtn.addEventListener("click", handleCreateRoom);
 elements.joinRoomBtn.addEventListener("click", () => handleJoinByCode(elements.roomCodeInput.value));
 elements.refreshRoomsBtn.addEventListener("click", refreshLobby);
 elements.clearHistoryBtn.addEventListener("click", handleClearHistory);
+elements.copyInviteBtn.addEventListener("click", handleCopyInviteLink);
 elements.backToLobbyBtn.addEventListener("click", leaveRoom);
 elements.resignBtn.addEventListener("click", handleResign);
 
@@ -415,4 +440,5 @@ elements.replayLiveBtn.addEventListener("click", () => {
     renderGameView();
 });
 
+checkInviteLinkOnLoad();
 refreshLobby();

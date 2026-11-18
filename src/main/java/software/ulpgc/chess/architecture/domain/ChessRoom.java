@@ -21,6 +21,8 @@ public record ChessRoom(
         long blackTimeRemainingMs,
         String lastMoveTimestamp
 ) {
+    public static final String BOT_PLAYER_NAME = "ChessBot";
+
     public ChessRoom {
         moves = List.copyOf(moves);
     }
@@ -52,6 +54,15 @@ public record ChessRoom(
                 initialMs,
                 now
         );
+    }
+
+    public static ChessRoom createVsBot(String roomId, String roomCode, String whitePlayer, int timeLimitSeconds) {
+        ChessRoom waiting = create(roomId, roomCode, whitePlayer, timeLimitSeconds);
+        return waiting.join(BOT_PLAYER_NAME);
+    }
+
+    public boolean isBotGame() {
+        return BOT_PLAYER_NAME.equalsIgnoreCase(blackPlayer);
     }
 
     public ChessRoom join(String player) {
@@ -133,7 +144,8 @@ public record ChessRoom(
             validateCastlingRights(from, to);
         }
 
-        Board updatedBoard = board.move(from, to);
+        Move previousMove = moves.isEmpty() ? null : moves.get(moves.size() - 1);
+        Board updatedBoard = board.move(from, to, previousMove);
         String now = Instant.now().toString();
         long updatedWhiteMs = whiteTimeRemainingMs;
         long updatedBlackMs = blackTimeRemainingMs;

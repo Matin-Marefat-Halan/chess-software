@@ -35,7 +35,13 @@ export function reconstructBoardAtMove(moves, moveIndex) {
     for (let i = 0; i < limit; i++) {
         const move = moves[i];
         const piece = board[move.from];
+        const targetWasEmpty = !board[move.to];
         delete board[move.from];
+
+        if ((piece === "WhitePawn" || piece === "BlackPawn") && move.from[0] !== move.to[0] && targetWasEmpty) {
+            delete board[`${move.to[0]}${move.from[1]}`];
+        }
+
         if (piece === "WhitePawn" && move.to.endsWith("8")) {
             board[move.to] = "WhiteQueen";
         } else if (piece === "BlackPawn" && move.to.endsWith("1")) {
@@ -43,6 +49,7 @@ export function reconstructBoardAtMove(moves, moveIndex) {
         } else {
             board[move.to] = piece;
         }
+
         if ((piece === "WhiteKing" || piece === "BlackKing") && Math.abs(move.to.charCodeAt(0) - move.from.charCodeAt(0)) === 2) {
             const rank = move.from[1];
             const kingSide = move.to[0] === "g";
@@ -57,14 +64,16 @@ export function reconstructBoardAtMove(moves, moveIndex) {
 
 export function getValidMovesForSquare(boardMap, fromCoord, moves = []) {
     if (!fromCoord || !boardMap[fromCoord]) return [];
+    const lastMove = moves.length > 0 ? moves[moves.length - 1] : null;
     const results = [];
     for (const file of FILES) {
         for (const rank of RANKS) {
             const toCoord = `${file}${rank}`;
-            if (isLegalMove(boardMap, fromCoord, toCoord, moves)) {
+            const check = evaluateMove(boardMap, fromCoord, toCoord, moves, lastMove);
+            if (check.valid) {
                 results.push({
                     coord: toCoord,
-                    isCapture: Boolean(boardMap[toCoord])
+                    isCapture: check.isCapture
                 });
             }
         }
@@ -72,13 +81,13 @@ export function getValidMovesForSquare(boardMap, fromCoord, moves = []) {
     return results;
 }
 
-function isLegalMove(board, from, to, moves) {
-    if (from === to) return false;
+function evaluateMove(board, from, to, moves, lastMove) {
+    if (from === to) return { valid: false };
     const moving = board[from];
-    if (!moving) return false;
+    if (!moving) return { valid: false };
     const color = moving.startsWith("White") ? "White" : "Black";
     const target = board[to];
-    if (target && (target.startsWith(color) || target.endsWith("King"))) return false;
+    if (target && (target.startsWith(color) || target.endsWith("King"))) return { valid: false };
 
     const fromF = FILES.indexOf(from[0]);
     const fromR = parseInt(from[1], 10);
@@ -91,31 +100,45 @@ function isLegalMove(board, from, to, moves) {
         const dir = color === "White" ? 1 : -1;
         const startRank = color === "White" ? 2 : 7;
         if (df === 0 && !target) {
-            if (dr === dir) return true;
+            if (dr === dir) return { valid: true, isCapture: false };
             if (dr === 2 * dir && fromR === startRank) {
-                const middle = `${from[0]}${fromR + dir}`;
-                return !board[middle];
+                return { valid: !board[`${from[0]}${fromR + dir}`], isCapture: false };
             }
         }
-        return Math.abs(df) === 1 && dr === dir && Boolean(target);
+        if (Math.abs(df) === 1 && dr === dir && Boolean(target)) {
+            return { valid: true, isCapture: true };
+        }
+        if (Math.abs(df) === 1 && dr === dir && !target && lastMove) {
+            const enPassantRank = color === "White" ? 5 : 4;
+            const lastFromR = parseInt(lastMove.from[1], 10);
+            const lastToR = parseInt(lastMove.to[1], 10);
+            const isEnPassant = fromR === enPassantRank
+                && lastMove.piece.endsWith("Pawn")
+                && !lastMove.piece.startsWith(color)
+                && Math.abs(lastToR - lastFromR) === 2
+                && lastMove.to[0] === to[0]
+                && lastToR === fromR;
+            return { valid: isEnPassant, isCapture: isEnPassant };
+        }
+        return { valid: false };
     }
     if (moving.endsWith("Rook")) {
-        return (df === 0 || dr === 0) && isPathClear(board, fromF, fromR, toF, toR);
+        return { valid: (df === 0 || dr === 0) && isPathClear(board, fromF, fromR, toF, toR), isCapture: Boolean(target) };
     }
     if (moving.endsWith("Bishop")) {
-        return Math.abs(df) === Math.abs(dr) && isPathClear(board, fromF, fromR, toF, toR);
+        return { valid: Math.abs(df) === Math.abs(dr) && isPathClear(board, fromF, fromR, toF, toR), isCapture: Boolean(target) };
     }
     if (moving.endsWith("Queen")) {
-        return (df === 0 || dr === 0 || Math.abs(df) === Math.abs(dr)) && isPathClear(board, fromF, fromR, toF, toR);
+        return { valid: (df === 0 || dr === 0 || Math.abs(df) === Math.abs(dr)) && isPathClear(board, fromF, fromR, toF, toR), isCapture: Boolean(target) };
     }
     if (moving.endsWith("Knight")) {
-        return (Math.abs(df) === 2 && Math.abs(dr) === 1) || (Math.abs(df) === 1 && Math.abs(dr) === 2);
+        return { valid: (Math.abs(df) === 2 && Math.abs(dr) === 1) || (Math.abs(df) === 1 && Math.abs(dr) === 2), isCapture: Boolean(target) };
     }
     if (moving.endsWith("King")) {
-        if (Math.abs(df) <= 1 && Math.abs(dr) <= 1) return true;
-        return canCastle(board, color, from, df, dr, moves);
+        if (Math.abs(df) <= 1 && Math.abs(dr) <= 1) return { valid: true, isCapture: Boolean(target) };
+        return { valid: canCastle(board, color, from, df, dr, moves), isCapture: false };
     }
-    return false;
+    return { valid: false };
 }
 
 function canCastle(board, color, from, df, dr, moves) {

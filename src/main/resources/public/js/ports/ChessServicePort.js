@@ -3,7 +3,7 @@ export class ChessServicePort {
         throw new Error("Not implemented");
     }
 
-    async createRoom(player, timeLimitSeconds = 0) {
+    async createRoom(player, timeLimitSeconds = 0, vsBot = false) {
         throw new Error("Not implemented");
     }
 

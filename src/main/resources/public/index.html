@@ -30,11 +30,16 @@
             <h2>Tu identidad</h2>
             <label for="playerNameInput">Nombre de usuario</label>
             <input type="text" id="playerNameInput" placeholder="Ej. Carlos" maxlength="24">
-            <p class="hint">Usa dos pestañas con nombres distintos para simular una partida completa.</p>
+            <p class="hint">Usa dos pestañas con nombres distintos para simular una partida multijugador.</p>
         </div>
 
         <div class="card">
             <h2>Crear nueva sala</h2>
+            <label for="opponentModeSelect">Modo de partida</label>
+            <select id="opponentModeSelect">
+                <option value="pvp">Multijugador (Sala privada con enlace)</option>
+                <option value="bot">Entrenamiento contra Bot IA (ChessBot)</option>
+            </select>
             <label for="timeLimitSelect">Control de tiempo</label>
             <select id="timeLimitSelect">
                 <option value="0">Sin límite de tiempo</option>
@@ -42,17 +47,17 @@
                 <option value="300" selected>5 minutos (Blitz)</option>
                 <option value="600">10 minutos (Rápida)</option>
             </select>
-            <button id="createRoomBtn" class="btn btn-primary">Crear sala privada</button>
+            <button id="createRoomBtn" class="btn btn-primary">Crear sala</button>
         </div>
 
         <div class="card">
-            <h2>Unirse con código</h2>
+            <h2>Unirse con código o enlace</h2>
             <label for="roomCodeInput">Código de sala (6 caracteres)</label>
             <div class="inline-form">
                 <input type="text" id="roomCodeInput" placeholder="Ej. A7K9P2" maxlength="6">
                 <button id="joinRoomBtn" class="btn btn-secondary">Unirse</button>
             </div>
-            <p class="hint">Enroque: mueve el rey 2 casillas hacia la torre (ej. e1 → g1).</p>
+            <p class="hint">Soporta enroque (e1 → g1) y captura al paso tras avance doble de peón.</p>
         </div>
 
         <div class="card full-width">
@@ -75,7 +80,10 @@
                     <span id="roleBadge" class="badge badge-role">ESPECTADOR</span>
                     <strong class="code-tag">Código: <span id="activeRoomCode">------</span></strong>
                 </div>
-                <button id="backToLobbyBtn" class="btn btn-ghost">Volver al lobby</button>
+                <div class="room-actions">
+                    <button id="copyInviteBtn" class="btn btn-secondary">Copiar enlace</button>
+                    <button id="backToLobbyBtn" class="btn btn-ghost">Volver al lobby</button>
+                </div>
             </div>
 
             <div class="players-bar">

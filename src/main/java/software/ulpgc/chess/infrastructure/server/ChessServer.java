@@ -84,7 +84,8 @@ public class ChessServer {
         executeJson(ctx, 201, () -> {
             CreateRoomRequest request = parseBody(ctx, CreateRoomRequest.class);
             int limit = request.timeLimitSeconds() != null ? request.timeLimitSeconds() : 0;
-            return createRoomUseCase.execute(request.player(), limit);
+            boolean vsBot = Boolean.TRUE.equals(request.vsBot());
+            return createRoomUseCase.execute(request.player(), limit, vsBot);
         });
     }
 
@@ -153,7 +154,7 @@ public class ChessServer {
         }
     }
 
-    private record CreateRoomRequest(String player, Integer timeLimitSeconds) {}
+    private record CreateRoomRequest(String player, Integer timeLimitSeconds, Boolean vsBot) {}
     private record JoinRoomRequest(String roomCode, String player) {}
     private record MoveRequest(String player, String from, String to) {}
     private record ResignRequest(String player) {}

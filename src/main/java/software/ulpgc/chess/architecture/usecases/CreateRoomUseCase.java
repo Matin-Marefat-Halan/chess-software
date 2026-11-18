@@ -16,13 +16,19 @@ public class CreateRoomUseCase {
     }
 
     public ChessRoom execute(String whitePlayer) {
-        return execute(whitePlayer, 0);
+        return execute(whitePlayer, 0, false);
     }
 
     public ChessRoom execute(String whitePlayer, int timeLimitSeconds) {
+        return execute(whitePlayer, timeLimitSeconds, false);
+    }
+
+    public ChessRoom execute(String whitePlayer, int timeLimitSeconds, boolean vsBot) {
         String roomId = UUID.randomUUID().toString();
         String roomCode = generateUniqueCode();
-        ChessRoom room = ChessRoom.create(roomId, roomCode, whitePlayer, timeLimitSeconds);
+        ChessRoom room = vsBot
+                ? ChessRoom.createVsBot(roomId, roomCode, whitePlayer, timeLimitSeconds)
+                : ChessRoom.create(roomId, roomCode, whitePlayer, timeLimitSeconds);
         repository.save(room);
         return room;
     }

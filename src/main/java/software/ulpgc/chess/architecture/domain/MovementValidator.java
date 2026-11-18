@@ -2,6 +2,10 @@ package software.ulpgc.chess.architecture.domain;
 
 public class MovementValidator {
     public boolean isValidMove(Board board, Square from, Square to) {
+        return isValidMove(board, from, to, null);
+    }
+
+    public boolean isValidMove(Board board, Square from, Square to, Move lastMove) {
         if (from == null || to == null || from.equals(to)) {
             return false;
         }
@@ -18,7 +22,7 @@ public class MovementValidator {
         int dr = to.rank().index() - from.rank().index();
 
         if (moving.isPawn()) {
-            return isValidPawnMove(board, moving.color(), from, to, df, dr, target);
+            return isValidPawnMove(board, moving.color(), from, to, df, dr, target, lastMove);
         }
         if (moving.isRook()) {
             return (df == 0 || dr == 0) && isPathClear(board, from, to);
@@ -58,7 +62,7 @@ public class MovementValidator {
         return isPathClear(board, from, rookSquare);
     }
 
-    private boolean isValidPawnMove(Board board, Color color, Square from, Square to, int df, int dr, Piece target) {
+    private boolean isValidPawnMove(Board board, Color color, Square from, Square to, int df, int dr, Piece target, Move lastMove) {
         int direction = color == Color.White ? 1 : -1;
         Rank startRank = color == Color.White ? Rank.R2 : Rank.R7;
 
@@ -71,7 +75,22 @@ public class MovementValidator {
                 return board.pieceAt(middle) == null;
             }
         }
-        return Math.abs(df) == 1 && dr == direction && target != null;
+        if (Math.abs(df) == 1 && dr == direction && target != null) {
+            return true;
+        }
+        if (Math.abs(df) == 1 && dr == direction && target == null && lastMove != null) {
+            Square lastFrom = Square.at(lastMove.from());
+            Square lastTo = Square.at(lastMove.to());
+            Piece lastPiece = Piece.valueOf(lastMove.piece());
+            Rank enPassantRank = color == Color.White ? Rank.R5 : Rank.R4;
+            return from.rank() == enPassantRank
+                    && lastPiece.isPawn()
+                    && lastPiece.color() != color
+                    && Math.abs(lastTo.rank().index() - lastFrom.rank().index()) == 2
+                    && lastTo.file() == to.file()
+                    && lastTo.rank() == from.rank();
+        }
+        return false;
     }
 
     private boolean isPathClear(Board board, Square from, Square to) {
