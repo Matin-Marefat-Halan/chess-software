@@ -11,11 +11,11 @@ export class RoomInteractionUseCases {
         return await this.chessService.listRooms();
     }
 
-    async createRoom(playerName) {
+    async createRoom(playerName, timeLimitSeconds = 0) {
         if (!playerName || !playerName.trim()) {
             throw new Error("Introduce tu nombre de usuario antes de crear una sala");
         }
-        return await this.chessService.createRoom(playerName.trim());
+        return await this.chessService.createRoom(playerName.trim(), timeLimitSeconds);
     }
 
     async joinRoom(roomCode, playerName) {
@@ -44,5 +44,13 @@ export class RoomInteractionUseCases {
             throw new Error("Debes identificarte para abandonar la partida");
         }
         return await this.chessService.resignGame(roomId, playerName.trim());
+    }
+
+    async deleteRoom(roomId) {
+        await this.chessService.deleteRoom(roomId);
+    }
+
+    async clearRooms() {
+        await this.chessService.clearRooms();
     }
 }

@@ -6,7 +6,8 @@ export class BoardRenderer {
         this.onSquareClick = onSquareClick;
     }
 
-    render(boardMap, selectedSquare, lastMove) {
+    render(boardMap, selectedSquare, lastMove, validMoves = []) {
+        const validMap = new Map(validMoves.map(m => [m.coord, m.isCapture]));
         this.boardElement.innerHTML = "";
         RANKS.forEach((rank, rankIdx) => {
             FILES.forEach((file, fileIdx) => {
@@ -20,6 +21,9 @@ export class BoardRenderer {
                 }
                 if (lastMove && (lastMove.from === coord || lastMove.to === coord)) {
                     squareEl.classList.add("last-move");
+                }
+                if (validMap.has(coord)) {
+                    squareEl.classList.add(validMap.get(coord) ? "valid-capture" : "valid-move");
                 }
 
                 if (fileIdx === 0) {

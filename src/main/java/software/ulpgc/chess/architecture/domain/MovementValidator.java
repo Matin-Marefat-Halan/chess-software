@@ -33,9 +33,29 @@ public class MovementValidator {
             return (Math.abs(df) == 2 && Math.abs(dr) == 1) || (Math.abs(df) == 1 && Math.abs(dr) == 2);
         }
         if (moving.isKing()) {
-            return Math.abs(df) <= 1 && Math.abs(dr) <= 1;
+            if (Math.abs(df) <= 1 && Math.abs(dr) <= 1) {
+                return true;
+            }
+            return isValidCastling(board, moving.color(), from, df, dr);
         }
         return false;
+    }
+
+    private boolean isValidCastling(Board board, Color color, Square from, int df, int dr) {
+        if (dr != 0 || Math.abs(df) != 2 || from.file() != File.E) {
+            return false;
+        }
+        Rank expectedRank = color == Color.White ? Rank.R1 : Rank.R8;
+        if (from.rank() != expectedRank) {
+            return false;
+        }
+        File rookFile = df == 2 ? File.H : File.A;
+        Square rookSquare = new Square(rookFile, expectedRank);
+        Piece rook = board.pieceAt(rookSquare);
+        if (rook == null || !rook.isRook() || rook.color() != color) {
+            return false;
+        }
+        return isPathClear(board, from, rookSquare);
     }
 
     private boolean isValidPawnMove(Board board, Color color, Square from, Square to, int df, int dr, Piece target) {

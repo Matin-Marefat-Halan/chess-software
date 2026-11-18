@@ -20,6 +20,7 @@ public class ChessServer {
     private final ResignGameUseCase resignGameUseCase;
     private final GetRoomUseCase getRoomUseCase;
     private final ListRoomsUseCase listRoomsUseCase;
+    private final DeleteRoomsUseCase deleteRoomsUseCase;
     private final Gson gson;
     private Javalin app;
 
@@ -30,7 +31,8 @@ public class ChessServer {
             MakeMoveUseCase makeMoveUseCase,
             ResignGameUseCase resignGameUseCase,
             GetRoomUseCase getRoomUseCase,
-            ListRoomsUseCase listRoomsUseCase
+            ListRoomsUseCase listRoomsUseCase,
+            DeleteRoomsUseCase deleteRoomsUseCase
     ) {
         this.port = port;
         this.createRoomUseCase = createRoomUseCase;
@@ -39,6 +41,7 @@ public class ChessServer {
         this.resignGameUseCase = resignGameUseCase;
         this.getRoomUseCase = getRoomUseCase;
         this.listRoomsUseCase = listRoomsUseCase;
+        this.deleteRoomsUseCase = deleteRoomsUseCase;
         this.gson = ChessGsonFactory.create();
     }
 
@@ -58,8 +61,10 @@ public class ChessServer {
         config.routes.options("/*", ctx -> ctx.status(204));
         config.routes.get("/api/rooms", this::listRooms);
         config.routes.post("/api/rooms", this::createRoom);
+        config.routes.delete("/api/rooms", this::deleteAllRooms);
         config.routes.post("/api/rooms/join", this::joinRoom);
         config.routes.get("/api/rooms/{roomId}", this::getRoomById);
+        config.routes.delete("/api/rooms/{roomId}", this::deleteRoomById);
         config.routes.get("/api/rooms/code/{roomCode}", this::getRoomByCode);
         config.routes.post("/api/rooms/{roomId}/moves", this::makeMove);
         config.routes.post("/api/rooms/{roomId}/resign", this::resignGame);
@@ -78,7 +83,22 @@ public class ChessServer {
     private void createRoom(Context ctx) {
         executeJson(ctx, 201, () -> {
             CreateRoomRequest request = parseBody(ctx, CreateRoomRequest.class);
-            return createRoomUseCase.execute(request.player());
+            int limit = request.timeLimitSeconds() != null ? request.timeLimitSeconds() : 0;
+            return createRoomUseCase.execute(request.player(), limit);
+        });
+    }
+
+    private void deleteAllRooms(Context ctx) {
+        executeJson(ctx, 200, () -> {
+            deleteRoomsUseCase.deleteAll();
+            return Map.of("deleted", true);
+        });
+    }
+
+    private void deleteRoomById(Context ctx) {
+        executeJson(ctx, 200, () -> {
+            deleteRoomsUseCase.deleteById(ctx.pathParam("roomId"));
+            return Map.of("deleted", true);
         });
     }
 
@@ -133,7 +153,7 @@ public class ChessServer {
         }
     }
 
-    private record CreateRoomRequest(String player) {}
+    private record CreateRoomRequest(String player, Integer timeLimitSeconds) {}
     private record JoinRoomRequest(String roomCode, String player) {}
     private record MoveRequest(String player, String from, String to) {}
     private record ResignRequest(String player) {}

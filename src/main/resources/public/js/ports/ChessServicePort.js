@@ -3,7 +3,7 @@ export class ChessServicePort {
         throw new Error("Not implemented");
     }
 
-    async createRoom(player) {
+    async createRoom(player, timeLimitSeconds = 0) {
         throw new Error("Not implemented");
     }
 
@@ -24,6 +24,14 @@ export class ChessServicePort {
     }
 
     async resignGame(roomId, player) {
+        throw new Error("Not implemented");
+    }
+
+    async deleteRoom(roomId) {
+        throw new Error("Not implemented");
+    }
+
+    async clearRooms() {
         throw new Error("Not implemented");
     }
 }

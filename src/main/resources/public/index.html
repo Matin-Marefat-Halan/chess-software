@@ -35,7 +35,13 @@
 
         <div class="card">
             <h2>Crear nueva sala</h2>
-            <p class="hint">Genera una sala privada con código único y juega con piezas blancas.</p>
+            <label for="timeLimitSelect">Control de tiempo</label>
+            <select id="timeLimitSelect">
+                <option value="0">Sin límite de tiempo</option>
+                <option value="180">3 minutos (Blitz)</option>
+                <option value="300" selected>5 minutos (Blitz)</option>
+                <option value="600">10 minutos (Rápida)</option>
+            </select>
             <button id="createRoomBtn" class="btn btn-primary">Crear sala privada</button>
         </div>
 
@@ -46,12 +52,16 @@
                 <input type="text" id="roomCodeInput" placeholder="Ej. A7K9P2" maxlength="6">
                 <button id="joinRoomBtn" class="btn btn-secondary">Unirse</button>
             </div>
+            <p class="hint">Enroque: mueve el rey 2 casillas hacia la torre (ej. e1 → g1).</p>
         </div>
 
         <div class="card full-width">
             <div class="card-header">
                 <h2>Salas registradas e histórico</h2>
-                <button id="refreshRoomsBtn" class="btn btn-ghost">Actualizar lista</button>
+                <div class="room-actions">
+                    <button id="refreshRoomsBtn" class="btn btn-ghost">Actualizar lista</button>
+                    <button id="clearHistoryBtn" class="btn btn-danger">Borrar historial</button>
+                </div>
             </div>
             <div id="roomsList" class="rooms-list"></div>
         </div>
@@ -70,13 +80,13 @@
 
             <div class="players-bar">
                 <div id="blackPlayerCard" class="player-pill">
-                    <span>♚ Negras:</span>
-                    <strong id="blackPlayerName">Esperando rival...</strong>
+                    <span>♚ <strong id="blackPlayerName">Esperando rival...</strong></span>
+                    <span id="blackClock" class="clock-badge">--:--</span>
                 </div>
                 <div id="turnIndicator" class="turn-pill">Turno: Blancas</div>
                 <div id="whitePlayerCard" class="player-pill">
-                    <span>♔ Blancas:</span>
-                    <strong id="whitePlayerName">-</strong>
+                    <span>♔ <strong id="whitePlayerName">-</strong></span>
+                    <span id="whiteClock" class="clock-badge">--:--</span>
                 </div>
             </div>
 

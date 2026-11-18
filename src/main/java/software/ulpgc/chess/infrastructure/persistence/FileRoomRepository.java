@@ -14,7 +14,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class FileRoomRepository implements RoomRepository {
-    private static final Type LIST_TYPE = new TypeToken<List<ChessRoom>>() {}.getType();
+    private static final Type LIST_TYPE = TypeToken.getParameterized(List.class, ChessRoom.class).getType();
     private final Path storagePath;
     private final Gson gson;
     private final Map<String, ChessRoom> cache;
@@ -53,6 +53,18 @@ public class FileRoomRepository implements RoomRepository {
         return cache.values().stream()
                 .sorted(Comparator.comparing(ChessRoom::createdAt).reversed())
                 .toList();
+    }
+
+    @Override
+    public synchronized void deleteById(String roomId) {
+        cache.remove(roomId);
+        persistToDisk();
+    }
+
+    @Override
+    public synchronized void deleteAll() {
+        cache.clear();
+        persistToDisk();
     }
 
     private void loadFromDisk() {

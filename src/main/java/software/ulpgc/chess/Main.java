@@ -27,7 +27,8 @@ public class Main {
                 new MakeMoveUseCase(repository),
                 new ResignGameUseCase(repository),
                 new GetRoomUseCase(repository),
-                new ListRoomsUseCase(repository)
+                new ListRoomsUseCase(repository),
+                new DeleteRoomsUseCase(repository)
         );
 
         server.start();

@@ -10,4 +10,6 @@ public interface RoomRepository {
     Optional<ChessRoom> findById(String roomId);
     Optional<ChessRoom> findByCode(String roomCode);
     List<ChessRoom> findAll();
+    void deleteById(String roomId);
+    void deleteAll();
 }

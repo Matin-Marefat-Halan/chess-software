@@ -1,5 +1,5 @@
 import { CONFIG } from "./config.js";
-import { reconstructBoardAtMove } from "./domain/ChessModels.js";
+import { getValidMovesForSquare, reconstructBoardAtMove } from "./domain/ChessModels.js";
 import { RoomInteractionUseCases } from "./usecases/RoomInteractionUseCases.js";
 import { HttpChessAdapter } from "./adapters/HttpChessAdapter.js";
 import { MockChessAdapter } from "./adapters/MockChessAdapter.js";
@@ -13,7 +13,8 @@ const state = {
     currentRoom: null,
     selectedSquare: null,
     replayIndex: null,
-    pollTimer: null
+    pollTimer: null,
+    clockTimer: null
 };
 
 const elements = {
@@ -21,17 +22,23 @@ const elements = {
     lobbyView: document.getElementById("lobbyView"),
     gameView: document.getElementById("gameView"),
     playerNameInput: document.getElementById("playerNameInput"),
+    timeLimitSelect: document.getElementById("timeLimitSelect"),
     roomCodeInput: document.getElementById("roomCodeInput"),
     createRoomBtn: document.getElementById("createRoomBtn"),
     joinRoomBtn: document.getElementById("joinRoomBtn"),
     refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
+    clearHistoryBtn: document.getElementById("clearHistoryBtn"),
     roomsList: document.getElementById("roomsList"),
     roomStatusBadge: document.getElementById("roomStatusBadge"),
     roleBadge: document.getElementById("roleBadge"),
     activeRoomCode: document.getElementById("activeRoomCode"),
     backToLobbyBtn: document.getElementById("backToLobbyBtn"),
+    whitePlayerCard: document.getElementById("whitePlayerCard"),
+    blackPlayerCard: document.getElementById("blackPlayerCard"),
     whitePlayerName: document.getElementById("whitePlayerName"),
     blackPlayerName: document.getElementById("blackPlayerName"),
+    whiteClock: document.getElementById("whiteClock"),
+    blackClock: document.getElementById("blackClock"),
     turnIndicator: document.getElementById("turnIndicator"),
     resignBtn: document.getElementById("resignBtn"),
     replayPrevBtn: document.getElementById("replayPrevBtn"),
@@ -57,6 +64,14 @@ function getPlayerRole(room) {
     if (room.whitePlayer && room.whitePlayer.toLowerCase() === player) return "BLANCAS";
     if (room.blackPlayer && room.blackPlayer.toLowerCase() === player) return "NEGRAS";
     return "ESPECTADOR";
+}
+
+function formatClock(ms, timeLimitSeconds) {
+    if (!timeLimitSeconds || timeLimitSeconds <= 0) return "∞";
+    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 function showToast(message, isError = false) {
@@ -92,9 +107,10 @@ function renderRoomsList(rooms) {
         const info = document.createElement("div");
         const opponent = room.blackPlayer ? room.blackPlayer : "Esperando rival...";
         const resultText = room.winner ? ` · Ganador: ${room.winner}` : "";
+        const timeText = room.timeLimitSeconds > 0 ? ` · ${Math.floor(room.timeLimitSeconds / 60)} min` : " · Sin reloj";
         info.innerHTML = `
             <strong>Sala ${room.roomCode}</strong> <span class="badge">${room.status}</span>
-            <div class="hint">♔ ${room.whitePlayer} vs ♚ ${opponent} · ${room.moves.length} jugadas${resultText}</div>
+            <div class="hint">♔ ${room.whitePlayer} vs ♚ ${opponent} · ${room.moves.length} jugadas${timeText}${resultText}</div>
         `;
 
         const actions = document.createElement("div");
@@ -114,6 +130,16 @@ function renderRoomsList(rooms) {
         openBtn.addEventListener("click", () => enterRoom(room));
         actions.appendChild(openBtn);
 
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "btn btn-danger";
+        deleteBtn.textContent = "✕";
+        deleteBtn.title = "Eliminar sala";
+        deleteBtn.addEventListener("click", async () => {
+            await useCases.deleteRoom(room.roomId);
+            refreshLobby();
+        });
+        actions.appendChild(deleteBtn);
+
         item.appendChild(info);
         item.appendChild(actions);
         elements.roomsList.appendChild(item);
@@ -127,11 +153,11 @@ function enterRoom(room) {
     elements.lobbyView.classList.add("hidden");
     elements.gameView.classList.remove("hidden");
     renderGameView();
-    startPolling();
+    startTimers();
 }
 
 function leaveRoom() {
-    stopPolling();
+    stopTimers();
     state.currentRoom = null;
     state.selectedSquare = null;
     state.replayIndex = null;
@@ -140,8 +166,8 @@ function leaveRoom() {
     refreshLobby();
 }
 
-function startPolling() {
-    stopPolling();
+function startTimers() {
+    stopTimers();
     state.pollTimer = setInterval(async () => {
         if (!state.currentRoom) return;
         try {
@@ -149,16 +175,43 @@ function startPolling() {
             state.currentRoom = updated;
             renderGameView();
         } catch (error) {
-            stopPolling();
+            stopTimers();
         }
     }, CONFIG.POLL_INTERVAL_MS);
+
+    state.clockTimer = setInterval(() => {
+        updateClocksDisplay();
+    }, 500);
 }
 
-function stopPolling() {
+function stopTimers() {
     if (state.pollTimer) {
         clearInterval(state.pollTimer);
         state.pollTimer = null;
     }
+    if (state.clockTimer) {
+        clearInterval(state.clockTimer);
+        state.clockTimer = null;
+    }
+}
+
+function updateClocksDisplay() {
+    const room = state.currentRoom;
+    if (!room) return;
+    let whiteMs = room.whiteTimeRemainingMs || 0;
+    let blackMs = room.blackTimeRemainingMs || 0;
+
+    if (room.status === "PLAYING" && room.timeLimitSeconds > 0 && room.lastMoveTimestamp) {
+        const elapsed = Math.max(0, Date.now() - Date.parse(room.lastMoveTimestamp));
+        if (room.currentTurn === "White") {
+            whiteMs = Math.max(0, whiteMs - elapsed);
+        } else {
+            blackMs = Math.max(0, blackMs - elapsed);
+        }
+    }
+
+    elements.whiteClock.textContent = formatClock(whiteMs, room.timeLimitSeconds);
+    elements.blackClock.textContent = formatClock(blackMs, room.timeLimitSeconds);
 }
 
 function renderGameView() {
@@ -172,15 +225,25 @@ function renderGameView() {
     elements.whitePlayerName.textContent = room.whitePlayer;
     elements.blackPlayerName.textContent = room.blackPlayer || "Esperando rival...";
 
+    elements.whitePlayerCard.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "White");
+    elements.blackPlayerCard.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "Black");
+
+    const myColor = role === "BLANCAS" ? "White" : role === "NEGRAS" ? "Black" : null;
+    const isMyTurn = room.status === "PLAYING" && myColor === room.currentTurn;
+    elements.turnIndicator.classList.toggle("my-turn", isMyTurn);
+
     if (room.status === "WAITING") {
         elements.turnIndicator.textContent = "Esperando segundo jugador";
     } else if (room.status === "FINISHED") {
         elements.turnIndicator.textContent = `Fin · Ganador: ${room.winner}`;
+    } else if (isMyTurn) {
+        elements.turnIndicator.textContent = "¡TU TURNO!";
     } else {
         const turnColor = room.currentTurn === "White" ? "Blancas" : "Negras";
         elements.turnIndicator.textContent = `Turno: ${turnColor}`;
     }
 
+    updateClocksDisplay();
     elements.resignBtn.disabled = room.status !== "PLAYING" || role === "ESPECTADOR";
 
     const totalMoves = room.moves.length;
@@ -193,7 +256,11 @@ function renderGameView() {
     const lastMove = activeMoveIndex > 0 ? room.moves[activeMoveIndex - 1] : null;
     elements.replayLabel.textContent = isReplaying ? `Jugada ${state.replayIndex}/${totalMoves}` : "En vivo";
 
-    boardRenderer.render(boardToRender, isReplaying ? null : state.selectedSquare, lastMove);
+    const validMoves = !isReplaying && isMyTurn && state.selectedSquare
+        ? getValidMovesForSquare(boardToRender, state.selectedSquare, room.moves)
+        : [];
+
+    boardRenderer.render(boardToRender, isReplaying ? null : state.selectedSquare, lastMove, validMoves);
     renderMovesHistory(room.moves, activeMoveIndex);
 }
 
@@ -268,7 +335,8 @@ async function handleSquareClick(coord) {
 
 async function handleCreateRoom() {
     try {
-        const room = await useCases.createRoom(getPlayerName());
+        const timeLimit = parseInt(elements.timeLimitSelect.value, 10) || 0;
+        const room = await useCases.createRoom(getPlayerName(), timeLimit);
         showToast(`Sala creada con código ${room.roomCode}`);
         enterRoom(room);
     } catch (error) {
@@ -298,6 +366,16 @@ async function handleResign() {
     }
 }
 
+async function handleClearHistory() {
+    try {
+        await useCases.clearRooms();
+        showToast("Historial de salas borrado");
+        refreshLobby();
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
 elements.adapterSelect.addEventListener("change", event => {
     const selected = event.target.value;
     useCases.setService(selected === "mock" ? mockAdapter : httpAdapter);
@@ -312,6 +390,7 @@ elements.adapterSelect.addEventListener("change", event => {
 elements.createRoomBtn.addEventListener("click", handleCreateRoom);
 elements.joinRoomBtn.addEventListener("click", () => handleJoinByCode(elements.roomCodeInput.value));
 elements.refreshRoomsBtn.addEventListener("click", refreshLobby);
+elements.clearHistoryBtn.addEventListener("click", handleClearHistory);
 elements.backToLobbyBtn.addEventListener("click", leaveRoom);
 elements.resignBtn.addEventListener("click", handleResign);
 

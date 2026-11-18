@@ -27,6 +27,17 @@ public final class Board {
         Map<Square, Piece> updated = new HashMap<>(pieces);
         updated.remove(from);
         updated.put(to, promoteIfEligible(moving, to));
+
+        if (moving.isKing() && Math.abs(to.file().index() - from.file().index()) == 2) {
+            boolean kingSide = to.file() == File.G;
+            Square rookFrom = new Square(kingSide ? File.H : File.A, from.rank());
+            Square rookTo = new Square(kingSide ? File.F : File.D, from.rank());
+            Piece rook = updated.remove(rookFrom);
+            if (rook != null) {
+                updated.put(rookTo, rook);
+            }
+        }
+
         return new Board(updated);
     }
 

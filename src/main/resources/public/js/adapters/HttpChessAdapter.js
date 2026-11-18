@@ -10,10 +10,10 @@ export class HttpChessAdapter extends ChessServicePort {
         return await this.#request("/api/rooms", { method: "GET" });
     }
 
-    async createRoom(player) {
+    async createRoom(player, timeLimitSeconds = 0) {
         return await this.#request("/api/rooms", {
             method: "POST",
-            body: JSON.stringify({ player })
+            body: JSON.stringify({ player, timeLimitSeconds })
         });
     }
 
@@ -44,6 +44,14 @@ export class HttpChessAdapter extends ChessServicePort {
             method: "POST",
             body: JSON.stringify({ player })
         });
+    }
+
+    async deleteRoom(roomId) {
+        return await this.#request(`/api/rooms/${encodeURIComponent(roomId)}`, { method: "DELETE" });
+    }
+
+    async clearRooms() {
+        return await this.#request("/api/rooms", { method: "DELETE" });
     }
 
     async #request(path, options) {

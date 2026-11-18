@@ -1,5 +1,6 @@
 package software.ulpgc.chess.architecture.domain;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,16 +15,27 @@ public record ChessRoom(
         String winner,
         Board board,
         List<Move> moves,
-        String createdAt
+        String createdAt,
+        int timeLimitSeconds,
+        long whiteTimeRemainingMs,
+        long blackTimeRemainingMs,
+        String lastMoveTimestamp
 ) {
     public ChessRoom {
         moves = List.copyOf(moves);
     }
 
     public static ChessRoom create(String roomId, String roomCode, String whitePlayer) {
+        return create(roomId, roomCode, whitePlayer, 0);
+    }
+
+    public static ChessRoom create(String roomId, String roomCode, String whitePlayer, int timeLimitSeconds) {
         if (whitePlayer == null || whitePlayer.isBlank()) {
             throw new IllegalArgumentException("White player name is required");
         }
+        int safeLimit = Math.max(0, timeLimitSeconds);
+        long initialMs = safeLimit * 1000L;
+        String now = Instant.now().toString();
         return new ChessRoom(
                 roomId,
                 roomCode,
@@ -34,7 +46,11 @@ public record ChessRoom(
                 null,
                 Board.initial(),
                 List.of(),
-                Instant.now().toString()
+                now,
+                safeLimit,
+                initialMs,
+                initialMs,
+                now
         );
     }
 
@@ -46,7 +62,7 @@ public record ChessRoom(
             throw new IllegalArgumentException("Black player name is required");
         }
         if (whitePlayer.equalsIgnoreCase(player.trim())) {
-            throw new IllegalArgumentException("Player name must be different from host");
+            throw new IllegalArgumentException("El nombre del rival debe ser distinto al del creador");
         }
         return new ChessRoom(
                 roomId,
@@ -58,11 +74,46 @@ public record ChessRoom(
                 null,
                 board,
                 moves,
-                createdAt
+                createdAt,
+                timeLimitSeconds,
+                whiteTimeRemainingMs,
+                blackTimeRemainingMs,
+                Instant.now().toString()
         );
     }
 
+    public ChessRoom evaluateClock() {
+        if (status != RoomStatus.PLAYING || timeLimitSeconds <= 0 || lastMoveTimestamp == null) {
+            return this;
+        }
+        long elapsed = Math.max(0, Duration.between(Instant.parse(lastMoveTimestamp), Instant.now()).toMillis());
+        if (currentTurn == Color.White) {
+            long remaining = Math.max(0, whiteTimeRemainingMs - elapsed);
+            if (remaining == 0) {
+                return new ChessRoom(
+                        roomId, roomCode, whitePlayer, blackPlayer, currentTurn,
+                        RoomStatus.FINISHED, blackPlayer, board, moves, createdAt,
+                        timeLimitSeconds, 0, blackTimeRemainingMs, lastMoveTimestamp
+                );
+            }
+        } else {
+            long remaining = Math.max(0, blackTimeRemainingMs - elapsed);
+            if (remaining == 0) {
+                return new ChessRoom(
+                        roomId, roomCode, whitePlayer, blackPlayer, currentTurn,
+                        RoomStatus.FINISHED, whitePlayer, board, moves, createdAt,
+                        timeLimitSeconds, whiteTimeRemainingMs, 0, lastMoveTimestamp
+                );
+            }
+        }
+        return this;
+    }
+
     public ChessRoom applyMove(String player, String fromCoordinate, String toCoordinate) {
+        ChessRoom evaluated = evaluateClock();
+        if (evaluated.status() == RoomStatus.FINISHED) {
+            return evaluated;
+        }
         if (status != RoomStatus.PLAYING) {
             throw new IllegalStateException("Game is not currently active");
         }
@@ -78,7 +129,24 @@ public record ChessRoom(
             throw new IllegalArgumentException("No valid piece of your color at " + fromCoordinate);
         }
 
+        if (moving.isKing() && Math.abs(to.file().index() - from.file().index()) == 2) {
+            validateCastlingRights(from, to);
+        }
+
         Board updatedBoard = board.move(from, to);
+        String now = Instant.now().toString();
+        long updatedWhiteMs = whiteTimeRemainingMs;
+        long updatedBlackMs = blackTimeRemainingMs;
+
+        if (timeLimitSeconds > 0 && lastMoveTimestamp != null) {
+            long elapsed = Math.max(0, Duration.between(Instant.parse(lastMoveTimestamp), Instant.parse(now)).toMillis());
+            if (currentTurn == Color.White) {
+                updatedWhiteMs = Math.max(0, whiteTimeRemainingMs - elapsed);
+            } else {
+                updatedBlackMs = Math.max(0, blackTimeRemainingMs - elapsed);
+            }
+        }
+
         List<Move> updatedMoves = new ArrayList<>(moves);
         updatedMoves.add(new Move(
                 moves.size() + 1,
@@ -87,7 +155,7 @@ public record ChessRoom(
                 from.notation(),
                 to.notation(),
                 moving.name(),
-                Instant.now().toString()
+                now
         ));
 
         return new ChessRoom(
@@ -100,8 +168,22 @@ public record ChessRoom(
                 null,
                 updatedBoard,
                 updatedMoves,
-                createdAt
+                createdAt,
+                timeLimitSeconds,
+                updatedWhiteMs,
+                updatedBlackMs,
+                now
         );
+    }
+
+    private void validateCastlingRights(Square kingFrom, Square kingTo) {
+        boolean kingSide = kingTo.file() == File.G;
+        Square rookFrom = new Square(kingSide ? File.H : File.A, kingFrom.rank());
+        boolean kingMoved = moves.stream().anyMatch(m -> m.from().equalsIgnoreCase(kingFrom.notation()));
+        boolean rookMoved = moves.stream().anyMatch(m -> m.from().equalsIgnoreCase(rookFrom.notation()));
+        if (kingMoved || rookMoved) {
+            throw new IllegalArgumentException("Castling is no longer available");
+        }
     }
 
     public ChessRoom resign(String player) {
@@ -128,7 +210,11 @@ public record ChessRoom(
                 gameWinner,
                 board,
                 moves,
-                createdAt
+                createdAt,
+                timeLimitSeconds,
+                whiteTimeRemainingMs,
+                blackTimeRemainingMs,
+                Instant.now().toString()
         );
     }
 
