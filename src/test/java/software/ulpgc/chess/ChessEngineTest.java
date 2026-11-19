@@ -67,4 +67,21 @@ class ChessEngineTest {
         Board promoted = custom.move(Square.at("a7"), Square.at("a8"), null, "Knight");
         assertEquals(Piece.WhiteKnight, promoted.pieceAt("a8"));
     }
+
+    @Test
+    void should_analyze_finished_game_and_classify_moves() {
+        ChessRoom room = ChessRoom.create("r2", "REV001", "Matin").join("Rival");
+        room = room.applyMove("Matin", "f2", "f3");
+        room = room.applyMove("Rival", "e7", "e5");
+        room = room.applyMove("Matin", "g2", "g4");
+        room = room.applyMove("Rival", "d8", "h4");
+
+        GameReviewAnalyzer analyzer = new GameReviewAnalyzer();
+        GameReview review = analyzer.analyze(room);
+
+        assertEquals(4, review.moves().size());
+        assertTrue(review.whiteAccuracy() >= 0.0 && review.whiteAccuracy() <= 100.0);
+        assertTrue(review.blackAccuracy() >= 0.0 && review.blackAccuracy() <= 100.0);
+        assertEquals("EXCELLENT", review.moves().get(3).classification());
+    }
 }

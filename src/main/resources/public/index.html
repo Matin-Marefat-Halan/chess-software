@@ -134,6 +134,7 @@
 
             <div class="board-actions">
                 <div class="room-actions">
+                    <button id="reviewGameBtn" class="btn btn-primary-inline hidden">📊 Revisar partida</button>
                     <button id="rematchBtn" class="btn btn-secondary hidden">🔄 Revancha</button>
                     <button id="drawBtn" class="btn btn-ghost">Tablas</button>
                     <button id="resignBtn" class="btn btn-danger">Abandonar</button>
@@ -149,6 +150,7 @@
         </div>
 
         <aside class="history-column card">
+            <div id="gameReviewPanel" class="review-panel hidden"></div>
             <h3>Historial de movimientos</h3>
             <p class="hint">Haz clic en cualquier jugada para revisar el tablero en ese instante.</p>
             <ol id="movesHistoryList" class="moves-list"></ol>

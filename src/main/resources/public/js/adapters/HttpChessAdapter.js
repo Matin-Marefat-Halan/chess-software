@@ -53,6 +53,17 @@ export class HttpChessAdapter extends ChessServicePort {
         });
     }
 
+    async requestRematch(roomId, player) {
+        return await this.#request(`/api/rooms/${encodeURIComponent(roomId)}/rematch`, {
+            method: "POST",
+            body: JSON.stringify({ player })
+        });
+    }
+
+    async reviewGame(roomId) {
+        return await this.#request(`/api/rooms/${encodeURIComponent(roomId)}/review`, { method: "GET" });
+    }
+
     async deleteRoom(roomId) {
         return await this.#request(`/api/rooms/${encodeURIComponent(roomId)}`, { method: "DELETE" });
     }

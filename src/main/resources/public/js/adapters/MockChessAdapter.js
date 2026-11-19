@@ -36,7 +36,9 @@ export class MockChessAdapter extends ChessServicePort {
             blackTimeRemainingMs: initialMs,
             lastMoveTimestamp: now,
             inCheck: false,
-            endReason: null
+            endReason: null,
+            rematchRoomId: null,
+            rematchRequestedBy: null
         };
 
         if (vsBot && playAsBlack) {
@@ -198,6 +200,64 @@ export class MockChessAdapter extends ChessServicePort {
         return structuredClone(room);
     }
 
+    async requestRematch(roomId, player) {
+        const oldRoom = this.rooms.get(roomId);
+        if (!oldRoom) throw new Error(`Room not found: ${roomId}`);
+        if (oldRoom.rematchRoomId) {
+            const existing = this.rooms.get(oldRoom.rematchRoomId);
+            if (existing && existing.status === "WAITING") {
+                return await this.joinRoom(existing.roomCode, player);
+            }
+            return structuredClone(existing);
+        }
+        const wasWhite = oldRoom.whitePlayer && oldRoom.whitePlayer.toLowerCase() === player.toLowerCase();
+        const nextColor = wasWhite ? "Black" : "White";
+        const vsBot = oldRoom.whitePlayer === "ChessBot" || oldRoom.blackPlayer === "ChessBot";
+        const newRoom = await this.createRoom(player, oldRoom.timeLimitSeconds, vsBot, nextColor);
+        oldRoom.rematchRoomId = newRoom.roomId;
+        oldRoom.rematchRequestedBy = player;
+        return newRoom;
+    }
+
+    async reviewGame(roomId) {
+        const room = this.rooms.get(roomId);
+        if (!room) throw new Error(`Room not found: ${roomId}`);
+        const reviewedMoves = room.moves.map((m, idx) => ({
+            moveNumber: m.moveNumber,
+            player: m.player,
+            color: m.color,
+            from: m.from,
+            to: m.to,
+            piece: m.piece,
+            classification: idx % 3 === 0 ? "EXCELLENT" : "GOOD",
+            badge: idx % 3 === 0 ? "!" : "✓",
+            bestMove: `${m.from} → ${m.to}`,
+            centipawnLoss: idx % 3 === 0 ? 0 : 35
+        }));
+        const wMoves = reviewedMoves.filter(m => m.color === "White");
+        const bMoves = reviewedMoves.filter(m => m.color === "Black");
+        return {
+            roomId: room.roomId,
+            whiteAccuracy: 94.5,
+            blackAccuracy: 91.2,
+            whiteSummary: {
+                excellent: wMoves.filter(m => m.classification === "EXCELLENT").length,
+                good: wMoves.filter(m => m.classification === "GOOD").length,
+                inaccuracy: 0,
+                mistake: 0,
+                blunder: 0
+            },
+            blackSummary: {
+                excellent: bMoves.filter(m => m.classification === "EXCELLENT").length,
+                good: bMoves.filter(m => m.classification === "GOOD").length,
+                inaccuracy: 0,
+                mistake: 0,
+                blunder: 0
+            },
+            moves: reviewedMoves
+        };
+    }
+
     async deleteRoom(roomId) {
         this.rooms.delete(roomId);
     }
@@ -232,7 +292,9 @@ export class MockChessAdapter extends ChessServicePort {
             blackTimeRemainingMs: 285000,
             lastMoveTimestamp: now,
             inCheck: false,
-            endReason: null
+            endReason: null,
+            rematchRoomId: null,
+            rematchRequestedBy: null
         });
     }
 }

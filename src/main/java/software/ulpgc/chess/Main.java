@@ -16,14 +16,17 @@ public class Main {
 
         RoomRepository repository = new FileRoomRepository(Path.of(dataPath));
         RoomCodeGenerator codeGenerator = new RandomRoomCodeGenerator();
+        CreateRoomUseCase createRoomUseCase = new CreateRoomUseCase(repository, codeGenerator);
 
         ChessServer server = new ChessServer(
                 port,
-                new CreateRoomUseCase(repository, codeGenerator),
+                createRoomUseCase,
                 new JoinRoomUseCase(repository),
                 new MakeMoveUseCase(repository),
                 new ResignGameUseCase(repository),
                 new DrawGameUseCase(repository),
+                new RequestRematchUseCase(repository, createRoomUseCase),
+                new ReviewGameUseCase(repository),
                 new GetRoomUseCase(repository),
                 new ListRoomsUseCase(repository),
                 new DeleteRoomsUseCase(repository)

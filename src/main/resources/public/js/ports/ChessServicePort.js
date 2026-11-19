@@ -31,6 +31,14 @@ export class ChessServicePort {
         throw new Error("Not implemented");
     }
 
+    async requestRematch(roomId, player) {
+        throw new Error("Not implemented");
+    }
+
+    async reviewGame(roomId) {
+        throw new Error("Not implemented");
+    }
+
     async deleteRoom(roomId) {
         throw new Error("Not implemented");
     }

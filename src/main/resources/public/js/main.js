@@ -4,6 +4,7 @@ import {
     computeCapturedMaterial,
     findKingSquare,
     getValidMovesForSquare,
+    isKingInCheck,
     reconstructBoardAtMove
 } from "./domain/ChessModels.js";
 import { RoomInteractionUseCases } from "./usecases/RoomInteractionUseCases.js";
@@ -19,10 +20,12 @@ const sounds = new SoundEffects();
 
 const state = {
     currentRoom: null,
+    currentReview: null,
     selectedSquare: null,
     replayIndex: null,
     boardFlipped: false,
     pendingPromotion: null,
+    isSubmittingMove: false,
     lastKnownMoveCount: 0,
     lastKnownCapturedCount: 0,
     lastKnownStatus: null,
@@ -64,6 +67,7 @@ const elements = {
     bottomPlayerClock: document.getElementById("bottomPlayerClock"),
     promotionModal: document.getElementById("promotionModal"),
     turnIndicator: document.getElementById("turnIndicator"),
+    reviewGameBtn: document.getElementById("reviewGameBtn"),
     rematchBtn: document.getElementById("rematchBtn"),
     drawBtn: document.getElementById("drawBtn"),
     resignBtn: document.getElementById("resignBtn"),
@@ -71,6 +75,7 @@ const elements = {
     replayNextBtn: document.getElementById("replayNextBtn"),
     replayLiveBtn: document.getElementById("replayLiveBtn"),
     replayLabel: document.getElementById("replayLabel"),
+    gameReviewPanel: document.getElementById("gameReviewPanel"),
     movesHistoryList: document.getElementById("movesHistoryList"),
     toastMessage: document.getElementById("toastMessage")
 };
@@ -193,14 +198,17 @@ function renderRoomsList(rooms) {
 function enterRoom(room) {
     const initialCaptured = computeCapturedMaterial(room.moves);
     state.currentRoom = room;
+    state.currentReview = null;
     state.selectedSquare = null;
     state.replayIndex = null;
     state.pendingPromotion = null;
+    state.isSubmittingMove = false;
     state.lastKnownMoveCount = room.moves.length;
     state.lastKnownCapturedCount = initialCaptured.capturedByWhite.length + initialCaptured.capturedByBlack.length;
     state.lastKnownStatus = room.status;
     state.boardFlipped = getPlayerRole(room) === "NEGRAS";
     elements.promotionModal.classList.add("hidden");
+    elements.gameReviewPanel.classList.add("hidden");
     elements.lobbyView.classList.add("hidden");
     elements.gameView.classList.remove("hidden");
     renderGameView();
@@ -210,10 +218,13 @@ function enterRoom(room) {
 function leaveRoom() {
     stopTimers();
     state.currentRoom = null;
+    state.currentReview = null;
     state.selectedSquare = null;
     state.replayIndex = null;
     state.pendingPromotion = null;
+    state.isSubmittingMove = false;
     elements.promotionModal.classList.add("hidden");
+    elements.gameReviewPanel.classList.add("hidden");
     elements.gameView.classList.add("hidden");
     elements.lobbyView.classList.remove("hidden");
     refreshLobby();
@@ -222,10 +233,12 @@ function leaveRoom() {
 function startTimers() {
     stopTimers();
     state.pollTimer = setInterval(async () => {
-        if (!state.currentRoom) return;
+        if (!state.currentRoom || state.isSubmittingMove) return;
         try {
             const updated = await useCases.refreshRoom(state.currentRoom.roomId);
-            handleRoomUpdateWithEffects(updated);
+            if (!state.isSubmittingMove) {
+                handleRoomUpdateWithEffects(updated);
+            }
         } catch (error) {
             stopTimers();
         }
@@ -303,17 +316,62 @@ function updateClocksDisplay() {
 
 function renderCapturedRow(container, pieces, advantage) {
     container.innerHTML = "";
+    const grouped = new Map();
     pieces.forEach(p => {
-        const span = document.createElement("span");
-        span.textContent = PIECE_SYMBOLS[p] || "";
-        container.appendChild(span);
+        grouped.set(p, (grouped.get(p) || 0) + 1);
     });
+
+    grouped.forEach((count, pieceKey) => {
+        const groupSpan = document.createElement("span");
+        groupSpan.className = "captured-group";
+        groupSpan.textContent = PIECE_SYMBOLS[pieceKey] || "";
+        if (count > 1) {
+            const countSpan = document.createElement("span");
+            countSpan.className = "captured-count";
+            countSpan.textContent = `×${count}`;
+            groupSpan.appendChild(countSpan);
+        }
+        container.appendChild(groupSpan);
+    });
+
     if (advantage > 0) {
         const advSpan = document.createElement("span");
         advSpan.className = "material-adv";
         advSpan.textContent = `+${advantage}`;
         container.appendChild(advSpan);
     }
+}
+
+function renderReviewSummaryPanel() {
+    const room = state.currentRoom;
+    const review = state.currentReview;
+    if (!room || !review) {
+        elements.gameReviewPanel.classList.add("hidden");
+        return;
+    }
+
+    const renderPlayerCard = (label, accuracy, summary) => `
+        <div class="review-player-box">
+            <strong>${label}</strong>
+            <div class="review-accuracy">${accuracy.toFixed(1)}%</div>
+            <div class="review-stats">
+                <span><span class="move-tag tag-EXCELLENT">!</span> Excelentes: <strong>${summary.excellent}</strong></span>
+                <span><span class="move-tag tag-GOOD">✓</span> Buenas: <strong>${summary.good}</strong></span>
+                <span><span class="move-tag tag-INACCURACY">?!</span> Imprecisiones: <strong>${summary.inaccuracy}</strong></span>
+                <span><span class="move-tag tag-MISTAKE">?</span> Errores: <strong>${summary.mistake}</strong></span>
+                <span><span class="move-tag tag-BLUNDER">??</span> Graves: <strong>${summary.blunder}</strong></span>
+            </div>
+        </div>
+    `;
+
+    elements.gameReviewPanel.innerHTML = `
+        <h4>📊 Revisión de la partida</h4>
+        <div class="review-grid">
+            ${renderPlayerCard(`♔ ${room.whitePlayer || "Blancas"}`, review.whiteAccuracy, review.whiteSummary)}
+            ${renderPlayerCard(`♚ ${room.blackPlayer || "Negras"}`, review.blackAccuracy, review.blackSummary)}
+        </div>
+    `;
+    elements.gameReviewPanel.classList.remove("hidden");
 }
 
 function renderGameView() {
@@ -351,14 +409,38 @@ function renderGameView() {
         elements.bottomPlayerBar.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "White");
     }
 
-    if (room.status === "FINISHED") {
+    const me = getPlayerName().toLowerCase();
+    const opponentRequestedRematch = room.status === "FINISHED"
+        && room.rematchRoomId
+        && room.rematchRequestedBy
+        && room.rematchRequestedBy.toLowerCase() !== me
+        && role !== "ESPECTADOR";
+
+    elements.reviewGameBtn.classList.toggle("hidden", room.status !== "FINISHED" || room.moves.length === 0);
+
+    if (opponentRequestedRematch) {
+        elements.gameAlertBanner.className = "game-alert rematch-alert";
+        elements.gameAlertBanner.innerHTML = "";
+        const msgSpan = document.createElement("span");
+        msgSpan.textContent = `⚔️ ¡${room.rematchRequestedBy} te ha retado a la revancha!`;
+        const acceptBtn = document.createElement("button");
+        acceptBtn.className = "btn btn-secondary";
+        acceptBtn.textContent = "✅ Aceptar revancha";
+        acceptBtn.addEventListener("click", handleRematch);
+        elements.gameAlertBanner.appendChild(msgSpan);
+        elements.gameAlertBanner.appendChild(acceptBtn);
+        elements.gameAlertBanner.classList.remove("hidden");
+        elements.rematchBtn.textContent = "✅ Aceptar revancha";
+        elements.rematchBtn.classList.remove("hidden");
+    } else if (room.status === "FINISHED") {
         elements.gameAlertBanner.className = "game-alert finish-alert";
         const winnerLabel = room.winner === "DRAW"
             ? "Empate / Tablas"
             : `Ganador: ${room.winner}`;
         elements.gameAlertBanner.textContent = `🏁 ${formatEndReason(room.endReason)} · ${winnerLabel}`;
         elements.gameAlertBanner.classList.remove("hidden");
-        elements.rematchBtn.classList.remove("hidden");
+        elements.rematchBtn.textContent = "🔄 Revancha";
+        elements.rematchBtn.classList.toggle("hidden", role === "ESPECTADOR");
     } else if (room.inCheck) {
         elements.gameAlertBanner.className = "game-alert check-alert";
         const checkedSide = room.currentTurn === "White" ? "Blancas" : "Negras";
@@ -376,7 +458,7 @@ function renderGameView() {
     elements.turnIndicator.classList.toggle("in-check-pill", room.status === "PLAYING" && room.inCheck);
 
     if (room.status === "WAITING") {
-        elements.turnIndicator.textContent = "Esperando segundo jugador";
+        elements.turnIndicator.textContent = "Esperando rival...";
     } else if (room.status === "FINISHED") {
         elements.turnIndicator.textContent = formatEndReason(room.endReason);
     } else if (room.inCheck) {
@@ -415,6 +497,7 @@ function renderGameView() {
         flipped: state.boardFlipped,
         checkedKingSquare
     });
+    renderReviewSummaryPanel();
     renderMovesHistory(room.moves, activeMoveIndex);
 }
 
@@ -425,6 +508,11 @@ function renderMovesHistory(moves, activeMoveIndex) {
         return;
     }
 
+    const reviewByNumber = new Map();
+    if (state.currentReview && state.currentReview.moves) {
+        state.currentReview.moves.forEach(rm => reviewByNumber.set(rm.moveNumber, rm));
+    }
+
     moves.forEach((move, idx) => {
         const li = document.createElement("li");
         li.className = "move-entry";
@@ -432,8 +520,21 @@ function renderMovesHistory(moves, activeMoveIndex) {
             li.classList.add("active");
         }
         const symbol = PIECE_SYMBOLS[move.piece] || (move.color === "White" ? "♔" : "♚");
+        const review = reviewByNumber.get(move.moveNumber);
+        const tagHtml = review
+            ? `<span class="move-tag tag-${review.classification}">${review.badge}</span>`
+            : "";
+        const showBestHint = review
+            && (review.classification === "INACCURACY" || review.classification === "MISTAKE" || review.classification === "BLUNDER");
+        const bestHtml = showBestHint
+            ? `<span class="best-hint">Mejor era: ${review.bestMove}</span>`
+            : "";
+
         li.innerHTML = `
-            <span><strong>#${move.moveNumber}</strong> ${symbol} ${move.from} → ${move.to}</span>
+            <div>
+                <span><strong>#${move.moveNumber}</strong> ${symbol} ${move.from} → ${move.to}</span>${tagHtml}
+                ${bestHtml}
+            </div>
             <span class="hint">${move.player}</span>
         `;
         li.addEventListener("click", () => {
@@ -448,7 +549,7 @@ function renderMovesHistory(moves, activeMoveIndex) {
 
 async function handleSquareClick(coord) {
     const room = state.currentRoom;
-    if (!room || room.status !== "PLAYING") return;
+    if (!room || room.status !== "PLAYING" || state.isSubmittingMove) return;
 
     if (state.replayIndex !== null && state.replayIndex < room.moves.length) {
         showToast("Pulsa 'Actual' para volver al tablero en vivo antes de mover", true);
@@ -476,17 +577,22 @@ async function handleSquareClick(coord) {
 
     if (state.selectedSquare) {
         const from = state.selectedSquare;
+        const legalMoves = getValidMovesForSquare(room.board, from, room.moves);
+        const chosenLegal = legalMoves.find(m => m.coord === coord);
+        if (!chosenLegal) {
+            state.selectedSquare = null;
+            renderGameView();
+            return;
+        }
+
         const movingPiece = room.board[from];
         const isPromotionMove = (movingPiece === "WhitePawn" && coord.endsWith("8"))
             || (movingPiece === "BlackPawn" && coord.endsWith("1"));
 
         if (isPromotionMove) {
-            const legal = getValidMovesForSquare(room.board, from, room.moves).some(m => m.coord === coord);
-            if (legal) {
-                state.pendingPromotion = { from, to: coord, color: myColor };
-                openPromotionModal(myColor);
-                return;
-            }
+            state.pendingPromotion = { from, to: coord, color: myColor };
+            openPromotionModal(myColor);
+            return;
         }
 
         state.selectedSquare = null;
@@ -503,40 +609,91 @@ function openPromotionModal(color) {
     elements.promotionModal.classList.remove("hidden");
 }
 
+function buildOptimisticRoom(room, from, to, promotion) {
+    const boardCopy = { ...room.board };
+    const movingPiece = boardCopy[from];
+    const targetWasEmpty = !boardCopy[to];
+    delete boardCopy[from];
+
+    if ((movingPiece === "WhitePawn" || movingPiece === "BlackPawn") && from[0] !== to[0] && targetWasEmpty) {
+        delete boardCopy[`${to[0]}${from[1]}`];
+    }
+
+    let finalPiece = movingPiece;
+    if (movingPiece === "WhitePawn" && to.endsWith("8")) {
+        finalPiece = `White${promotion || "Queen"}`;
+    } else if (movingPiece === "BlackPawn" && to.endsWith("1")) {
+        finalPiece = `Black${promotion || "Queen"}`;
+    }
+    boardCopy[to] = finalPiece;
+
+    if ((movingPiece === "WhiteKing" || movingPiece === "BlackKing") && Math.abs(to.charCodeAt(0) - from.charCodeAt(0)) === 2) {
+        const rank = from[1];
+        const kingSide = to[0] === "g";
+        const rookFrom = `${kingSide ? "h" : "a"}${rank}`;
+        const rookTo = `${kingSide ? "f" : "d"}${rank}`;
+        boardCopy[rookTo] = boardCopy[rookFrom];
+        delete boardCopy[rookFrom];
+    }
+
+    const nextTurn = room.currentTurn === "White" ? "Black" : "White";
+    const nextInCheck = isKingInCheck(boardCopy, nextTurn);
+    const optimisticMoves = [
+        ...room.moves,
+        {
+            moveNumber: room.moves.length + 1,
+            player: getPlayerName(),
+            color: room.currentTurn,
+            from,
+            to,
+            piece: finalPiece,
+            timestamp: new Date().toISOString()
+        }
+    ];
+
+    return {
+        ...room,
+        board: boardCopy,
+        moves: optimisticMoves,
+        currentTurn: nextTurn,
+        inCheck: nextInCheck
+    };
+}
+
 async function submitMove(from, to, promotion) {
     const room = state.currentRoom;
     if (!room) return;
+    const snapshotBeforeMove = room;
     const prevCount = room.moves.length;
+
+    state.isSubmittingMove = true;
+    const optimistic = buildOptimisticRoom(room, from, to, promotion);
+    handleRoomUpdateWithEffects(optimistic);
+
+    const isBotGame = room.whitePlayer === "ChessBot" || room.blackPlayer === "ChessBot";
+    if (isBotGame && optimistic.status === "PLAYING") {
+        elements.turnIndicator.textContent = "ChessBot pensando...";
+    }
 
     try {
         const updated = await useCases.makeMove(room.roomId, getPlayerName(), from, to, promotion);
-        const isBotGame = updated.whitePlayer === "ChessBot" || updated.blackPlayer === "ChessBot";
         const isBotReply = isBotGame && updated.moves.length === prevCount + 2;
 
         if (isBotReply) {
-            const botSide = updated.whitePlayer === "ChessBot" ? "White" : "Black";
-            const intermediateRoom = {
-                ...updated,
-                board: reconstructBoardAtMove(updated.moves, updated.moves.length - 1),
-                moves: updated.moves.slice(0, -1),
-                currentTurn: botSide,
-                status: "PLAYING",
-                inCheck: false
-            };
-            state.currentRoom = intermediateRoom;
-            sounds.playMove();
-            renderGameView();
-            elements.turnIndicator.textContent = "ChessBot pensando...";
-
             setTimeout(() => {
+                state.isSubmittingMove = false;
                 if (state.currentRoom && state.currentRoom.roomId === updated.roomId) {
                     handleRoomUpdateWithEffects(updated);
                 }
-            }, 550);
+            }, 350);
         } else {
+            state.isSubmittingMove = false;
             handleRoomUpdateWithEffects(updated);
         }
     } catch (error) {
+        state.isSubmittingMove = false;
+        state.currentRoom = snapshotBeforeMove;
+        state.lastKnownMoveCount = snapshotBeforeMove.moves.length;
         showToast(error.message, true);
         renderGameView();
     }
@@ -558,17 +715,36 @@ async function handleCreateRoom() {
 async function handleRematch() {
     const oldRoom = state.currentRoom;
     if (!oldRoom) return;
-    const role = getPlayerRole(oldRoom);
-    const nextColor = role === "BLANCAS" ? "Black" : "White";
-    const isBotGame = oldRoom.whitePlayer === "ChessBot" || oldRoom.blackPlayer === "ChessBot";
     try {
-        const newRoom = await useCases.createRoom(getPlayerName(), oldRoom.timeLimitSeconds, isBotGame, nextColor);
-        showToast(isBotGame
-            ? "Revancha contra ChessBot iniciada con colores invertidos"
-            : `Nueva sala ${newRoom.roomCode} creada. Copia y envía el enlace a tu rival.`);
-        enterRoom(newRoom);
+        const nextRoom = await useCases.requestRematch(oldRoom.roomId, getPlayerName());
+        const isBotGame = nextRoom.whitePlayer === "ChessBot" || nextRoom.blackPlayer === "ChessBot";
+        if (isBotGame) {
+            showToast("Revancha contra ChessBot iniciada");
+        } else if (nextRoom.status === "PLAYING") {
+            showToast("¡Revancha aceptada! Partida iniciada");
+        } else {
+            showToast("Solicitud de revancha enviada. Esperando a que tu rival acepte...");
+        }
+        enterRoom(nextRoom);
     } catch (error) {
         showToast(error.message, true);
+    }
+}
+
+async function handleReviewGame() {
+    const room = state.currentRoom;
+    if (!room) return;
+    elements.reviewGameBtn.disabled = true;
+    elements.reviewGameBtn.textContent = "Analizando...";
+    try {
+        state.currentReview = await useCases.reviewGame(room.roomId);
+        renderGameView();
+        showToast("Revisión de partida completada");
+    } catch (error) {
+        showToast(error.message, true);
+    } finally {
+        elements.reviewGameBtn.disabled = false;
+        elements.reviewGameBtn.textContent = "📊 Revisar partida";
     }
 }
 
@@ -669,6 +845,7 @@ elements.flipBoardBtn.addEventListener("click", () => {
 });
 
 elements.createRoomBtn.addEventListener("click", handleCreateRoom);
+elements.reviewGameBtn.addEventListener("click", handleReviewGame);
 elements.rematchBtn.addEventListener("click", handleRematch);
 elements.joinRoomBtn.addEventListener("click", () => handleJoinByCode(elements.roomCodeInput.value));
 elements.refreshRoomsBtn.addEventListener("click", refreshLobby);

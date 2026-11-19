@@ -53,6 +53,17 @@ export class RoomInteractionUseCases {
         return await this.chessService.agreeDraw(roomId, playerName.trim());
     }
 
+    async requestRematch(roomId, playerName) {
+        if (!playerName || !playerName.trim()) {
+            throw new Error("Debes identificarte para pedir revancha");
+        }
+        return await this.chessService.requestRematch(roomId, playerName.trim());
+    }
+
+    async reviewGame(roomId) {
+        return await this.chessService.reviewGame(roomId);
+    }
+
     async deleteRoom(roomId) {
         await this.chessService.deleteRoom(roomId);
     }

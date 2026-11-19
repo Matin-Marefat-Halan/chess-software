@@ -11,6 +11,7 @@ public class BotMoveSelector {
     private final SecureRandom random = new SecureRandom();
 
     public record SelectedMove(Square from, Square to, String promotion, long thinkingMs) {}
+    public record EvaluatedMove(Square from, Square to, String promotion, int score) {}
 
     public Optional<SelectedMove> chooseMove(Board board, Color botColor, Move lastMove) {
         List<MoveCandidate> legalMoves = generateLegalMoves(board, botColor, lastMove);
@@ -22,11 +23,7 @@ public class BotMoveSelector {
         List<MoveCandidate> bestCandidates = new ArrayList<>();
 
         for (MoveCandidate candidate : legalMoves) {
-            Board nextBoard = board.applyUnchecked(candidate.from, candidate.to, lastMove, candidate.promotion);
-            Move simulatedMove = new Move(1, "Bot", botColor, candidate.from.notation(), candidate.to.notation(),
-                    board.pieceAt(candidate.from).name(), "");
-            int score = -minimax(nextBoard, 1, Integer.MIN_VALUE + 1, Integer.MAX_VALUE - 1, botColor.opposite(), simulatedMove);
-
+            int score = scoreCandidate(board, botColor, candidate, lastMove);
             if (score > bestScore) {
                 bestScore = score;
                 bestCandidates.clear();
@@ -37,8 +34,37 @@ public class BotMoveSelector {
         }
 
         MoveCandidate chosen = bestCandidates.get(random.nextInt(bestCandidates.size()));
-        long thinkingMs = 1400L + random.nextInt(1800);
+        long thinkingMs = 1200L + random.nextInt(1400);
         return Optional.of(new SelectedMove(chosen.from, chosen.to, chosen.promotion, thinkingMs));
+    }
+
+    public Optional<EvaluatedMove> findBestMove(Board board, Color side, Move lastMove) {
+        List<MoveCandidate> legalMoves = generateLegalMoves(board, side, lastMove);
+        if (legalMoves.isEmpty()) {
+            return Optional.empty();
+        }
+
+        EvaluatedMove best = null;
+        for (MoveCandidate candidate : legalMoves) {
+            int score = scoreCandidate(board, side, candidate, lastMove);
+            if (best == null || score > best.score()) {
+                best = new EvaluatedMove(candidate.from, candidate.to, candidate.promotion, score);
+            }
+        }
+        return Optional.ofNullable(best);
+    }
+
+    public int evaluateSpecificMove(Board board, Color side, Square from, Square to, String promotion, Move lastMove) {
+        MoveCandidate candidate = new MoveCandidate(from, to, promotion);
+        return scoreCandidate(board, side, candidate, lastMove);
+    }
+
+    private int scoreCandidate(Board board, Color side, MoveCandidate candidate, Move lastMove) {
+        Board nextBoard = board.applyUnchecked(candidate.from, candidate.to, lastMove, candidate.promotion);
+        Piece moving = board.pieceAt(candidate.from);
+        String pieceName = moving != null ? moving.name() : "Pawn";
+        Move simulatedMove = new Move(1, "Sim", side, candidate.from.notation(), candidate.to.notation(), pieceName, "");
+        return -minimax(nextBoard, 1, Integer.MIN_VALUE + 1, Integer.MAX_VALUE - 1, side.opposite(), simulatedMove);
     }
 
     private int minimax(Board board, int depth, int alpha, int beta, Color sideToMove, Move lastMove) {
@@ -56,8 +82,9 @@ public class BotMoveSelector {
         int best = Integer.MIN_VALUE + 1;
         for (MoveCandidate candidate : moves) {
             Board nextBoard = board.applyUnchecked(candidate.from, candidate.to, lastMove, candidate.promotion);
-            Move simulatedMove = new Move(1, "Sim", sideToMove, candidate.from.notation(), candidate.to.notation(),
-                    board.pieceAt(candidate.from).name(), "");
+            Piece moving = board.pieceAt(candidate.from);
+            String pieceName = moving != null ? moving.name() : "Pawn";
+            Move simulatedMove = new Move(1, "Sim", sideToMove, candidate.from.notation(), candidate.to.notation(), pieceName, "");
             int score = -minimax(nextBoard, depth - 1, -beta, -alpha, sideToMove.opposite(), simulatedMove);
             best = Math.max(best, score);
             alpha = Math.max(alpha, score);
@@ -69,7 +96,8 @@ public class BotMoveSelector {
     }
 
     private List<MoveCandidate> generateLegalMoves(Board board, Color color, Move lastMove) {
-        List<MoveCandidate> result = new ArrayList<>();
+        List<MoveCandidate> captures = new ArrayList<>();
+        List<MoveCandidate> quietMoves = new ArrayList<>();
         for (Map.Entry<Square, Piece> entry : board.pieces().entrySet()) {
             Piece piece = entry.getValue();
             if (piece.color() != color) {
@@ -81,12 +109,18 @@ public class BotMoveSelector {
                     Square to = new Square(file, rank);
                     if (validator.isValidMove(board, from, to, lastMove)) {
                         boolean isPromotion = piece.isPawn() && (rank == Rank.R8 || rank == Rank.R1);
-                        result.add(new MoveCandidate(from, to, isPromotion ? "Queen" : null));
+                        MoveCandidate candidate = new MoveCandidate(from, to, isPromotion ? "Queen" : null);
+                        if (board.pieceAt(to) != null) {
+                            captures.add(candidate);
+                        } else {
+                            quietMoves.add(candidate);
+                        }
                     }
                 }
             }
         }
-        return result;
+        captures.addAll(quietMoves);
+        return captures;
     }
 
     private int evaluateBoard(Board board, Color perspective) {

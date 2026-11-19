@@ -54,6 +54,7 @@ export class BoardRenderer {
                 const pieceKey = boardMap[coord];
                 if (pieceKey && PIECE_SYMBOLS[pieceKey]) {
                     const pieceSpan = document.createElement("span");
+                    pieceSpan.className = "piece-glyph";
                     pieceSpan.textContent = PIECE_SYMBOLS[pieceKey];
                     sq.appendChild(pieceSpan);
                 }

@@ -19,6 +19,8 @@ public class ChessServer {
     private final MakeMoveUseCase makeMoveUseCase;
     private final ResignGameUseCase resignGameUseCase;
     private final DrawGameUseCase drawGameUseCase;
+    private final RequestRematchUseCase requestRematchUseCase;
+    private final ReviewGameUseCase reviewGameUseCase;
     private final GetRoomUseCase getRoomUseCase;
     private final ListRoomsUseCase listRoomsUseCase;
     private final DeleteRoomsUseCase deleteRoomsUseCase;
@@ -32,6 +34,8 @@ public class ChessServer {
             MakeMoveUseCase makeMoveUseCase,
             ResignGameUseCase resignGameUseCase,
             DrawGameUseCase drawGameUseCase,
+            RequestRematchUseCase requestRematchUseCase,
+            ReviewGameUseCase reviewGameUseCase,
             GetRoomUseCase getRoomUseCase,
             ListRoomsUseCase listRoomsUseCase,
             DeleteRoomsUseCase deleteRoomsUseCase
@@ -42,6 +46,8 @@ public class ChessServer {
         this.makeMoveUseCase = makeMoveUseCase;
         this.resignGameUseCase = resignGameUseCase;
         this.drawGameUseCase = drawGameUseCase;
+        this.requestRematchUseCase = requestRematchUseCase;
+        this.reviewGameUseCase = reviewGameUseCase;
         this.getRoomUseCase = getRoomUseCase;
         this.listRoomsUseCase = listRoomsUseCase;
         this.deleteRoomsUseCase = deleteRoomsUseCase;
@@ -72,6 +78,8 @@ public class ChessServer {
         config.routes.post("/api/rooms/{roomId}/moves", this::makeMove);
         config.routes.post("/api/rooms/{roomId}/resign", this::resignGame);
         config.routes.post("/api/rooms/{roomId}/draw", this::drawGame);
+        config.routes.post("/api/rooms/{roomId}/rematch", this::requestRematch);
+        config.routes.get("/api/rooms/{roomId}/review", this::reviewGame);
     }
 
     private void applyCorsHeaders(Context ctx) {
@@ -142,6 +150,17 @@ public class ChessServer {
             PlayerRequest request = parseBody(ctx, PlayerRequest.class);
             return drawGameUseCase.execute(ctx.pathParam("roomId"), request.player());
         });
+    }
+
+    private void requestRematch(Context ctx) {
+        executeJson(ctx, 200, () -> {
+            PlayerRequest request = parseBody(ctx, PlayerRequest.class);
+            return requestRematchUseCase.execute(ctx.pathParam("roomId"), request.player());
+        });
+    }
+
+    private void reviewGame(Context ctx) {
+        executeJson(ctx, 200, () -> reviewGameUseCase.execute(ctx.pathParam("roomId")));
     }
 
     private <T> T parseBody(Context ctx, Class<T> type) {

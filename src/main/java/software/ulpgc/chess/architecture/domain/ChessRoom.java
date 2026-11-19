@@ -21,7 +21,9 @@ public record ChessRoom(
         long blackTimeRemainingMs,
         String lastMoveTimestamp,
         boolean inCheck,
-        String endReason
+        String endReason,
+        String rematchRoomId,
+        String rematchRequestedBy
 ) {
     public static final String BOT_PLAYER_NAME = "ChessBot";
     public static final String DRAW_RESULT = "DRAW";
@@ -62,6 +64,8 @@ public record ChessRoom(
                 initialMs,
                 now,
                 false,
+                null,
+                null,
                 null
         );
     }
@@ -126,7 +130,32 @@ public record ChessRoom(
                 blackTimeRemainingMs,
                 Instant.now().toString(),
                 false,
-                null
+                null,
+                rematchRoomId,
+                rematchRequestedBy
+        );
+    }
+
+    public ChessRoom withRematch(String nextRematchRoomId, String requestedBy) {
+        return new ChessRoom(
+                roomId,
+                roomCode,
+                whitePlayer,
+                blackPlayer,
+                currentTurn,
+                status,
+                winner,
+                board,
+                moves,
+                createdAt,
+                timeLimitSeconds,
+                whiteTimeRemainingMs,
+                blackTimeRemainingMs,
+                lastMoveTimestamp,
+                inCheck,
+                endReason,
+                nextRematchRoomId,
+                requestedBy
         );
     }
 
@@ -142,7 +171,7 @@ public record ChessRoom(
                         roomId, roomCode, whitePlayer, blackPlayer, currentTurn,
                         RoomStatus.FINISHED, blackPlayer, board, moves, createdAt,
                         timeLimitSeconds, 0, blackTimeRemainingMs, lastMoveTimestamp,
-                        inCheck, "TIMEOUT"
+                        inCheck, "TIMEOUT", rematchRoomId, rematchRequestedBy
                 );
             }
         } else {
@@ -152,7 +181,7 @@ public record ChessRoom(
                         roomId, roomCode, whitePlayer, blackPlayer, currentTurn,
                         RoomStatus.FINISHED, whitePlayer, board, moves, createdAt,
                         timeLimitSeconds, whiteTimeRemainingMs, 0, lastMoveTimestamp,
-                        inCheck, "TIMEOUT"
+                        inCheck, "TIMEOUT", rematchRoomId, rematchRequestedBy
                 );
             }
         }
@@ -265,7 +294,9 @@ public record ChessRoom(
                 updatedBlackMs,
                 now,
                 nextInCheck,
-                nextEndReason
+                nextEndReason,
+                rematchRoomId,
+                rematchRequestedBy
         );
     }
 
@@ -309,7 +340,9 @@ public record ChessRoom(
                 blackTimeRemainingMs,
                 Instant.now().toString(),
                 inCheck,
-                "RESIGNATION"
+                "RESIGNATION",
+                rematchRoomId,
+                rematchRequestedBy
         );
     }
 
@@ -340,7 +373,9 @@ public record ChessRoom(
                 blackTimeRemainingMs,
                 Instant.now().toString(),
                 inCheck,
-                "DRAW_AGREED"
+                "DRAW_AGREED",
+                rematchRoomId,
+                rematchRequestedBy
         );
     }
 
