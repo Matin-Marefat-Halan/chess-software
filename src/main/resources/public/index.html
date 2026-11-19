@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess Rooms - Arquitectura Hexagonal</title>
+    <title>Chess Rooms - Ajedrez Online</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -12,15 +12,18 @@
         <span class="brand-icon">♞</span>
         <div>
             <h1>Chess Rooms</h1>
-            <p class="subtitle">Sistema distribuido de salas de ajedrez</p>
+            <p class="subtitle">Ajedrez multijugador y entrenamiento IA</p>
         </div>
     </div>
-    <div class="adapter-switch">
-        <label for="adapterSelect">Adaptador de comunicación:</label>
-        <select id="adapterSelect">
-            <option value="http">HTTP Backend (Javalin API)</option>
-            <option value="mock">Mock Local (Doble de prueba)</option>
-        </select>
+    <div class="header-controls">
+        <button id="soundToggleBtn" class="btn btn-ghost" title="Activar/Silenciar sonido">🔊 Sonido</button>
+        <div class="adapter-switch">
+            <label for="adapterSelect">Adaptador:</label>
+            <select id="adapterSelect">
+                <option value="http">HTTP Backend (Javalin API)</option>
+                <option value="mock">Mock Local (Doble de prueba)</option>
+            </select>
+        </div>
     </div>
 </header>
 
@@ -29,8 +32,8 @@
         <div class="card">
             <h2>Tu identidad</h2>
             <label for="playerNameInput">Nombre de usuario</label>
-            <input type="text" id="playerNameInput" placeholder="Ej. Carlos" maxlength="24">
-            <p class="hint">Usa dos pestañas con nombres distintos para simular una partida multijugador.</p>
+            <input type="text" id="playerNameInput" placeholder="Ej. Matin" maxlength="24">
+            <p class="hint">Usa tu nombre para crear salas o unirte con un enlace de invitación.</p>
         </div>
 
         <div class="card">
@@ -39,6 +42,12 @@
             <select id="opponentModeSelect">
                 <option value="pvp">Multijugador (Sala privada con enlace)</option>
                 <option value="bot">Entrenamiento contra Bot IA (ChessBot)</option>
+            </select>
+            <label for="playerColorSelect">Jugar con</label>
+            <select id="playerColorSelect">
+                <option value="White" selected>Blancas (♔ Salida inicial)</option>
+                <option value="Black">Negras (♚ Tablero invertido)</option>
+                <option value="Random">Aleatorio (🎲 Sorteo)</option>
             </select>
             <label for="timeLimitSelect">Control de tiempo</label>
             <select id="timeLimitSelect">
@@ -57,7 +66,7 @@
                 <input type="text" id="roomCodeInput" placeholder="Ej. A7K9P2" maxlength="6">
                 <button id="joinRoomBtn" class="btn btn-secondary">Unirse</button>
             </div>
-            <p class="hint">Soporta enroque (e1 → g1) y captura al paso tras avance doble de peón.</p>
+            <p class="hint">Reglas FIDE completas: enroque, captura al paso, coronación, jaque, jaque mate y ahogado.</p>
         </div>
 
         <div class="card full-width">
@@ -81,27 +90,55 @@
                     <strong class="code-tag">Código: <span id="activeRoomCode">------</span></strong>
                 </div>
                 <div class="room-actions">
+                    <button id="flipBoardBtn" class="btn btn-ghost" title="Girar orientación del tablero">⇅ Girar</button>
                     <button id="copyInviteBtn" class="btn btn-secondary">Copiar enlace</button>
-                    <button id="backToLobbyBtn" class="btn btn-ghost">Volver al lobby</button>
+                    <button id="backToLobbyBtn" class="btn btn-ghost">Lobby</button>
                 </div>
             </div>
 
-            <div class="players-bar">
-                <div id="blackPlayerCard" class="player-pill">
-                    <span>♚ <strong id="blackPlayerName">Esperando rival...</strong></span>
-                    <span id="blackClock" class="clock-badge">--:--</span>
+            <div id="gameAlertBanner" class="game-alert hidden"></div>
+
+            <div id="topPlayerBar" class="player-strip">
+                <div class="player-info">
+                    <span id="topPlayerIcon">♚</span>
+                    <strong id="topPlayerName">Esperando rival...</strong>
+                    <div id="topCapturedPieces" class="captured-row"></div>
                 </div>
-                <div id="turnIndicator" class="turn-pill">Turno: Blancas</div>
-                <div id="whitePlayerCard" class="player-pill">
-                    <span>♔ <strong id="whitePlayerName">-</strong></span>
-                    <span id="whiteClock" class="clock-badge">--:--</span>
+                <span id="topPlayerClock" class="clock-badge">--:--</span>
+            </div>
+
+            <div class="board-wrapper">
+                <div id="chessBoard" class="chess-board"></div>
+
+                <div id="promotionModal" class="promotion-modal hidden">
+                    <div class="promotion-card">
+                        <h4>Elige pieza para coronar</h4>
+                        <div class="promotion-options">
+                            <button type="button" class="promo-btn" data-piece="Queen" title="Dama">♕</button>
+                            <button type="button" class="promo-btn" data-piece="Rook" title="Torre">♖</button>
+                            <button type="button" class="promo-btn" data-piece="Bishop" title="Alfil">♗</button>
+                            <button type="button" class="promo-btn" data-piece="Knight" title="Caballo">♘</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div id="chessBoard" class="chess-board"></div>
+            <div id="bottomPlayerBar" class="player-strip">
+                <div class="player-info">
+                    <span id="bottomPlayerIcon">♔</span>
+                    <strong id="bottomPlayerName">-</strong>
+                    <div id="bottomCapturedPieces" class="captured-row"></div>
+                </div>
+                <span id="bottomPlayerClock" class="clock-badge">--:--</span>
+            </div>
 
             <div class="board-actions">
-                <button id="resignBtn" class="btn btn-danger">Abandonar partida</button>
+                <div class="room-actions">
+                    <button id="rematchBtn" class="btn btn-secondary hidden">🔄 Revancha</button>
+                    <button id="drawBtn" class="btn btn-ghost">Tablas</button>
+                    <button id="resignBtn" class="btn btn-danger">Abandonar</button>
+                </div>
+                <div id="turnIndicator" class="turn-pill">Turno: Blancas</div>
                 <div class="replay-controls">
                     <button id="replayPrevBtn" class="btn btn-ghost" title="Jugada anterior">◀</button>
                     <span id="replayLabel">En vivo</span>
@@ -113,7 +150,7 @@
 
         <aside class="history-column card">
             <h3>Historial de movimientos</h3>
-            <p class="hint">Haz clic en cualquier jugada para inspeccionar el tablero en ese instante.</p>
+            <p class="hint">Haz clic en cualquier jugada para revisar el tablero en ese instante.</p>
             <ol id="movesHistoryList" class="moves-list"></ol>
         </aside>
     </section>

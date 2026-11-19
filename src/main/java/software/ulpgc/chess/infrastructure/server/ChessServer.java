@@ -18,6 +18,7 @@ public class ChessServer {
     private final JoinRoomUseCase joinRoomUseCase;
     private final MakeMoveUseCase makeMoveUseCase;
     private final ResignGameUseCase resignGameUseCase;
+    private final DrawGameUseCase drawGameUseCase;
     private final GetRoomUseCase getRoomUseCase;
     private final ListRoomsUseCase listRoomsUseCase;
     private final DeleteRoomsUseCase deleteRoomsUseCase;
@@ -30,6 +31,7 @@ public class ChessServer {
             JoinRoomUseCase joinRoomUseCase,
             MakeMoveUseCase makeMoveUseCase,
             ResignGameUseCase resignGameUseCase,
+            DrawGameUseCase drawGameUseCase,
             GetRoomUseCase getRoomUseCase,
             ListRoomsUseCase listRoomsUseCase,
             DeleteRoomsUseCase deleteRoomsUseCase
@@ -39,6 +41,7 @@ public class ChessServer {
         this.joinRoomUseCase = joinRoomUseCase;
         this.makeMoveUseCase = makeMoveUseCase;
         this.resignGameUseCase = resignGameUseCase;
+        this.drawGameUseCase = drawGameUseCase;
         this.getRoomUseCase = getRoomUseCase;
         this.listRoomsUseCase = listRoomsUseCase;
         this.deleteRoomsUseCase = deleteRoomsUseCase;
@@ -68,6 +71,7 @@ public class ChessServer {
         config.routes.get("/api/rooms/code/{roomCode}", this::getRoomByCode);
         config.routes.post("/api/rooms/{roomId}/moves", this::makeMove);
         config.routes.post("/api/rooms/{roomId}/resign", this::resignGame);
+        config.routes.post("/api/rooms/{roomId}/draw", this::drawGame);
     }
 
     private void applyCorsHeaders(Context ctx) {
@@ -85,7 +89,8 @@ public class ChessServer {
             CreateRoomRequest request = parseBody(ctx, CreateRoomRequest.class);
             int limit = request.timeLimitSeconds() != null ? request.timeLimitSeconds() : 0;
             boolean vsBot = Boolean.TRUE.equals(request.vsBot());
-            return createRoomUseCase.execute(request.player(), limit, vsBot);
+            String color = request.color() != null ? request.color() : "White";
+            return createRoomUseCase.execute(request.player(), limit, vsBot, color);
         });
     }
 
@@ -121,14 +126,21 @@ public class ChessServer {
     private void makeMove(Context ctx) {
         executeJson(ctx, 200, () -> {
             MoveRequest request = parseBody(ctx, MoveRequest.class);
-            return makeMoveUseCase.execute(ctx.pathParam("roomId"), request.player(), request.from(), request.to());
+            return makeMoveUseCase.execute(ctx.pathParam("roomId"), request.player(), request.from(), request.to(), request.promotion());
         });
     }
 
     private void resignGame(Context ctx) {
         executeJson(ctx, 200, () -> {
-            ResignRequest request = parseBody(ctx, ResignRequest.class);
+            PlayerRequest request = parseBody(ctx, PlayerRequest.class);
             return resignGameUseCase.execute(ctx.pathParam("roomId"), request.player());
+        });
+    }
+
+    private void drawGame(Context ctx) {
+        executeJson(ctx, 200, () -> {
+            PlayerRequest request = parseBody(ctx, PlayerRequest.class);
+            return drawGameUseCase.execute(ctx.pathParam("roomId"), request.player());
         });
     }
 
@@ -154,8 +166,8 @@ public class ChessServer {
         }
     }
 
-    private record CreateRoomRequest(String player, Integer timeLimitSeconds, Boolean vsBot) {}
+    private record CreateRoomRequest(String player, Integer timeLimitSeconds, Boolean vsBot, String color) {}
     private record JoinRoomRequest(String roomCode, String player) {}
-    private record MoveRequest(String player, String from, String to) {}
-    private record ResignRequest(String player) {}
+    private record MoveRequest(String player, String from, String to, String promotion) {}
+    private record PlayerRequest(String player) {}
 }

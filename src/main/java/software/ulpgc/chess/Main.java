@@ -10,14 +10,11 @@ import software.ulpgc.chess.infrastructure.server.ChessServer;
 import java.nio.file.Path;
 
 public class Main {
-    private static final int DEFAULT_PORT = 8080;
-    private static final String DEFAULT_DATA_PATH = "data/rooms.json";
-
     public static void main(String[] args) {
-        int port = resolvePort();
-        Path storagePath = Path.of(System.getenv().getOrDefault("DATA_PATH", DEFAULT_DATA_PATH));
+        int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
+        String dataPath = System.getenv().getOrDefault("DATA_PATH", "data/rooms.json");
 
-        RoomRepository repository = new FileRoomRepository(storagePath);
+        RoomRepository repository = new FileRoomRepository(Path.of(dataPath));
         RoomCodeGenerator codeGenerator = new RandomRoomCodeGenerator();
 
         ChessServer server = new ChessServer(
@@ -26,19 +23,11 @@ public class Main {
                 new JoinRoomUseCase(repository),
                 new MakeMoveUseCase(repository),
                 new ResignGameUseCase(repository),
+                new DrawGameUseCase(repository),
                 new GetRoomUseCase(repository),
                 new ListRoomsUseCase(repository),
                 new DeleteRoomsUseCase(repository)
         );
-
         server.start();
-    }
-
-    private static int resolvePort() {
-        String envPort = System.getenv("PORT");
-        if (envPort == null || envPort.isBlank()) {
-            return DEFAULT_PORT;
-        }
-        return Integer.parseInt(envPort.trim());
     }
 }

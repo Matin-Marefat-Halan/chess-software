@@ -16,20 +16,26 @@ public class MakeMoveUseCase {
     }
 
     public ChessRoom execute(String roomId, String player, String from, String to) {
+        return execute(roomId, player, from, to, null);
+    }
+
+    public ChessRoom execute(String roomId, String player, String from, String to, String promotion) {
         ChessRoom room = repository.findById(roomId)
                 .orElseThrow(() -> new NoSuchElementException("Room not found: " + roomId));
-        ChessRoom updated = room.applyMove(player, from, to);
+        ChessRoom updated = room.applyMove(player, from, to, promotion);
 
+        Color botColor = updated.botColor();
         if (updated.status() == RoomStatus.PLAYING
-                && updated.isBotGame()
-                && updated.currentTurn() == Color.Black) {
+                && botColor != null
+                && updated.currentTurn() == botColor) {
             Move lastMove = updated.moves().get(updated.moves().size() - 1);
-            Optional<BotMoveSelector.SelectedMove> botMove = botMoveSelector.chooseMove(updated.board(), Color.Black, lastMove);
+            Optional<BotMoveSelector.SelectedMove> botMove = botMoveSelector.chooseMove(updated.board(), botColor, lastMove);
             if (botMove.isPresent()) {
-                updated = updated.applyMove(
-                        ChessRoom.BOT_PLAYER_NAME,
+                updated = updated.applyBotMove(
                         botMove.get().from().notation(),
-                        botMove.get().to().notation()
+                        botMove.get().to().notation(),
+                        botMove.get().promotion(),
+                        botMove.get().thinkingMs()
                 );
             }
         }

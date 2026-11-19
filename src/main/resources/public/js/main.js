@@ -1,28 +1,43 @@
 import { CONFIG } from "./config.js";
-import { getValidMovesForSquare, reconstructBoardAtMove } from "./domain/ChessModels.js";
+import {
+    PIECE_SYMBOLS,
+    computeCapturedMaterial,
+    findKingSquare,
+    getValidMovesForSquare,
+    reconstructBoardAtMove
+} from "./domain/ChessModels.js";
 import { RoomInteractionUseCases } from "./usecases/RoomInteractionUseCases.js";
 import { HttpChessAdapter } from "./adapters/HttpChessAdapter.js";
 import { MockChessAdapter } from "./adapters/MockChessAdapter.js";
 import { BoardRenderer } from "./ui/BoardRenderer.js";
+import { SoundEffects } from "./ui/SoundEffects.js";
 
 const httpAdapter = new HttpChessAdapter(CONFIG.API_BASE_URL);
 const mockAdapter = new MockChessAdapter();
 const useCases = new RoomInteractionUseCases(httpAdapter);
+const sounds = new SoundEffects();
 
 const state = {
     currentRoom: null,
     selectedSquare: null,
     replayIndex: null,
+    boardFlipped: false,
+    pendingPromotion: null,
+    lastKnownMoveCount: 0,
+    lastKnownCapturedCount: 0,
+    lastKnownStatus: null,
     pollTimer: null,
     clockTimer: null
 };
 
 const elements = {
+    soundToggleBtn: document.getElementById("soundToggleBtn"),
     adapterSelect: document.getElementById("adapterSelect"),
     lobbyView: document.getElementById("lobbyView"),
     gameView: document.getElementById("gameView"),
     playerNameInput: document.getElementById("playerNameInput"),
     opponentModeSelect: document.getElementById("opponentModeSelect"),
+    playerColorSelect: document.getElementById("playerColorSelect"),
     timeLimitSelect: document.getElementById("timeLimitSelect"),
     roomCodeInput: document.getElementById("roomCodeInput"),
     createRoomBtn: document.getElementById("createRoomBtn"),
@@ -33,15 +48,24 @@ const elements = {
     roomStatusBadge: document.getElementById("roomStatusBadge"),
     roleBadge: document.getElementById("roleBadge"),
     activeRoomCode: document.getElementById("activeRoomCode"),
+    flipBoardBtn: document.getElementById("flipBoardBtn"),
     copyInviteBtn: document.getElementById("copyInviteBtn"),
     backToLobbyBtn: document.getElementById("backToLobbyBtn"),
-    whitePlayerCard: document.getElementById("whitePlayerCard"),
-    blackPlayerCard: document.getElementById("blackPlayerCard"),
-    whitePlayerName: document.getElementById("whitePlayerName"),
-    blackPlayerName: document.getElementById("blackPlayerName"),
-    whiteClock: document.getElementById("whiteClock"),
-    blackClock: document.getElementById("blackClock"),
+    gameAlertBanner: document.getElementById("gameAlertBanner"),
+    topPlayerBar: document.getElementById("topPlayerBar"),
+    topPlayerIcon: document.getElementById("topPlayerIcon"),
+    topPlayerName: document.getElementById("topPlayerName"),
+    topCapturedPieces: document.getElementById("topCapturedPieces"),
+    topPlayerClock: document.getElementById("topPlayerClock"),
+    bottomPlayerBar: document.getElementById("bottomPlayerBar"),
+    bottomPlayerIcon: document.getElementById("bottomPlayerIcon"),
+    bottomPlayerName: document.getElementById("bottomPlayerName"),
+    bottomCapturedPieces: document.getElementById("bottomCapturedPieces"),
+    bottomPlayerClock: document.getElementById("bottomPlayerClock"),
+    promotionModal: document.getElementById("promotionModal"),
     turnIndicator: document.getElementById("turnIndicator"),
+    rematchBtn: document.getElementById("rematchBtn"),
+    drawBtn: document.getElementById("drawBtn"),
     resignBtn: document.getElementById("resignBtn"),
     replayPrevBtn: document.getElementById("replayPrevBtn"),
     replayNextBtn: document.getElementById("replayNextBtn"),
@@ -76,6 +100,18 @@ function formatClock(ms, timeLimitSeconds) {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+function formatEndReason(reason) {
+    const labels = {
+        CHECKMATE: "Jaque Mate",
+        STALEMATE: "Tablas por Ahogado",
+        INSUFFICIENT_MATERIAL: "Tablas por material insuficiente",
+        DRAW_AGREED: "Tablas acordadas",
+        TIMEOUT: "Tiempo agotado",
+        RESIGNATION: "Abandono"
+    };
+    return labels[reason] || "Partida finalizada";
+}
+
 function showToast(message, isError = false) {
     elements.toastMessage.textContent = message;
     elements.toastMessage.classList.toggle("error", isError);
@@ -107,12 +143,18 @@ function renderRoomsList(rooms) {
         item.className = "room-item";
 
         const info = document.createElement("div");
-        const opponent = room.blackPlayer ? room.blackPlayer : "Esperando rival...";
-        const resultText = room.winner ? ` · Ganador: ${room.winner}` : "";
+        const whiteName = room.whitePlayer || "Esperando blancas...";
+        const blackName = room.blackPlayer || "Esperando negras...";
+        let resultText = "";
+        if (room.winner) {
+            resultText = room.winner === "DRAW"
+                ? ` · Resultado: Tablas (${formatEndReason(room.endReason)})`
+                : ` · Ganador: ${room.winner} (${formatEndReason(room.endReason)})`;
+        }
         const timeText = room.timeLimitSeconds > 0 ? ` · ${Math.floor(room.timeLimitSeconds / 60)} min` : " · Sin reloj";
         info.innerHTML = `
             <strong>Sala ${room.roomCode}</strong> <span class="badge">${room.status}</span>
-            <div class="hint">♔ ${room.whitePlayer} vs ♚ ${opponent} · ${room.moves.length} jugadas${timeText}${resultText}</div>
+            <div class="hint">♔ ${whiteName} vs ♚ ${blackName} · ${room.moves.length} jugadas${timeText}${resultText}</div>
         `;
 
         const actions = document.createElement("div");
@@ -149,9 +191,16 @@ function renderRoomsList(rooms) {
 }
 
 function enterRoom(room) {
+    const initialCaptured = computeCapturedMaterial(room.moves);
     state.currentRoom = room;
     state.selectedSquare = null;
     state.replayIndex = null;
+    state.pendingPromotion = null;
+    state.lastKnownMoveCount = room.moves.length;
+    state.lastKnownCapturedCount = initialCaptured.capturedByWhite.length + initialCaptured.capturedByBlack.length;
+    state.lastKnownStatus = room.status;
+    state.boardFlipped = getPlayerRole(room) === "NEGRAS";
+    elements.promotionModal.classList.add("hidden");
     elements.lobbyView.classList.add("hidden");
     elements.gameView.classList.remove("hidden");
     renderGameView();
@@ -163,6 +212,8 @@ function leaveRoom() {
     state.currentRoom = null;
     state.selectedSquare = null;
     state.replayIndex = null;
+    state.pendingPromotion = null;
+    elements.promotionModal.classList.add("hidden");
     elements.gameView.classList.add("hidden");
     elements.lobbyView.classList.remove("hidden");
     refreshLobby();
@@ -174,8 +225,7 @@ function startTimers() {
         if (!state.currentRoom) return;
         try {
             const updated = await useCases.refreshRoom(state.currentRoom.roomId);
-            state.currentRoom = updated;
-            renderGameView();
+            handleRoomUpdateWithEffects(updated);
         } catch (error) {
             stopTimers();
         }
@@ -183,7 +233,7 @@ function startTimers() {
 
     state.clockTimer = setInterval(() => {
         updateClocksDisplay();
-    }, 500);
+    }, 400);
 }
 
 function stopTimers() {
@@ -195,6 +245,33 @@ function stopTimers() {
         clearInterval(state.clockTimer);
         state.clockTimer = null;
     }
+}
+
+function handleRoomUpdateWithEffects(updated) {
+    const captured = computeCapturedMaterial(updated.moves);
+    const totalCaptured = captured.capturedByWhite.length + captured.capturedByBlack.length;
+    const hadNewMove = updated.moves.length > state.lastKnownMoveCount;
+    const hadCapture = totalCaptured > state.lastKnownCapturedCount;
+    const justFinished = updated.status === "FINISHED" && state.lastKnownStatus !== "FINISHED";
+
+    state.currentRoom = updated;
+    state.lastKnownMoveCount = updated.moves.length;
+    state.lastKnownCapturedCount = totalCaptured;
+    state.lastKnownStatus = updated.status;
+
+    if (justFinished) {
+        sounds.playGameOver();
+    } else if (hadNewMove) {
+        if (updated.inCheck) {
+            sounds.playCheck();
+        } else if (hadCapture) {
+            sounds.playCapture();
+        } else {
+            sounds.playMove();
+        }
+    }
+
+    renderGameView();
 }
 
 function updateClocksDisplay() {
@@ -212,8 +289,31 @@ function updateClocksDisplay() {
         }
     }
 
-    elements.whiteClock.textContent = formatClock(whiteMs, room.timeLimitSeconds);
-    elements.blackClock.textContent = formatClock(blackMs, room.timeLimitSeconds);
+    const whiteText = formatClock(whiteMs, room.timeLimitSeconds);
+    const blackText = formatClock(blackMs, room.timeLimitSeconds);
+
+    if (state.boardFlipped) {
+        elements.topPlayerClock.textContent = whiteText;
+        elements.bottomPlayerClock.textContent = blackText;
+    } else {
+        elements.topPlayerClock.textContent = blackText;
+        elements.bottomPlayerClock.textContent = whiteText;
+    }
+}
+
+function renderCapturedRow(container, pieces, advantage) {
+    container.innerHTML = "";
+    pieces.forEach(p => {
+        const span = document.createElement("span");
+        span.textContent = PIECE_SYMBOLS[p] || "";
+        container.appendChild(span);
+    });
+    if (advantage > 0) {
+        const advSpan = document.createElement("span");
+        advSpan.className = "material-adv";
+        advSpan.textContent = `+${advantage}`;
+        container.appendChild(advSpan);
+    }
 }
 
 function renderGameView() {
@@ -224,20 +324,63 @@ function renderGameView() {
     elements.roomStatusBadge.textContent = room.status;
     elements.roleBadge.textContent = role;
     elements.activeRoomCode.textContent = room.roomCode;
-    elements.whitePlayerName.textContent = room.whitePlayer;
-    elements.blackPlayerName.textContent = room.blackPlayer || "Esperando rival...";
 
-    elements.whitePlayerCard.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "White");
-    elements.blackPlayerCard.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "Black");
+    const captured = computeCapturedMaterial(room.moves);
+    const whiteLabel = room.whitePlayer || "Esperando rival...";
+    const blackLabel = room.blackPlayer || "Esperando rival...";
+
+    if (state.boardFlipped) {
+        elements.topPlayerIcon.textContent = "♔";
+        elements.topPlayerName.textContent = whiteLabel;
+        renderCapturedRow(elements.topCapturedPieces, captured.capturedByWhite, captured.whiteAdvantage);
+        elements.topPlayerBar.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "White");
+
+        elements.bottomPlayerIcon.textContent = "♚";
+        elements.bottomPlayerName.textContent = blackLabel;
+        renderCapturedRow(elements.bottomCapturedPieces, captured.capturedByBlack, captured.blackAdvantage);
+        elements.bottomPlayerBar.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "Black");
+    } else {
+        elements.topPlayerIcon.textContent = "♚";
+        elements.topPlayerName.textContent = blackLabel;
+        renderCapturedRow(elements.topCapturedPieces, captured.capturedByBlack, captured.blackAdvantage);
+        elements.topPlayerBar.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "Black");
+
+        elements.bottomPlayerIcon.textContent = "♔";
+        elements.bottomPlayerName.textContent = whiteLabel;
+        renderCapturedRow(elements.bottomCapturedPieces, captured.capturedByWhite, captured.whiteAdvantage);
+        elements.bottomPlayerBar.classList.toggle("active-turn", room.status === "PLAYING" && room.currentTurn === "White");
+    }
+
+    if (room.status === "FINISHED") {
+        elements.gameAlertBanner.className = "game-alert finish-alert";
+        const winnerLabel = room.winner === "DRAW"
+            ? "Empate / Tablas"
+            : `Ganador: ${room.winner}`;
+        elements.gameAlertBanner.textContent = `🏁 ${formatEndReason(room.endReason)} · ${winnerLabel}`;
+        elements.gameAlertBanner.classList.remove("hidden");
+        elements.rematchBtn.classList.remove("hidden");
+    } else if (room.inCheck) {
+        elements.gameAlertBanner.className = "game-alert check-alert";
+        const checkedSide = room.currentTurn === "White" ? "Blancas" : "Negras";
+        elements.gameAlertBanner.textContent = `⚠️ ¡JAQUE al rey de ${checkedSide}!`;
+        elements.gameAlertBanner.classList.remove("hidden");
+        elements.rematchBtn.classList.add("hidden");
+    } else {
+        elements.gameAlertBanner.classList.add("hidden");
+        elements.rematchBtn.classList.add("hidden");
+    }
 
     const myColor = role === "BLANCAS" ? "White" : role === "NEGRAS" ? "Black" : null;
     const isMyTurn = room.status === "PLAYING" && myColor === room.currentTurn;
-    elements.turnIndicator.classList.toggle("my-turn", isMyTurn);
+    elements.turnIndicator.classList.toggle("my-turn", isMyTurn && !room.inCheck);
+    elements.turnIndicator.classList.toggle("in-check-pill", room.status === "PLAYING" && room.inCheck);
 
     if (room.status === "WAITING") {
         elements.turnIndicator.textContent = "Esperando segundo jugador";
     } else if (room.status === "FINISHED") {
-        elements.turnIndicator.textContent = `Fin · Ganador: ${room.winner}`;
+        elements.turnIndicator.textContent = formatEndReason(room.endReason);
+    } else if (room.inCheck) {
+        elements.turnIndicator.textContent = isMyTurn ? "¡ESTÁS EN JAQUE!" : "¡JAQUE!";
     } else if (isMyTurn) {
         elements.turnIndicator.textContent = "¡TU TURNO!";
     } else {
@@ -246,7 +389,9 @@ function renderGameView() {
     }
 
     updateClocksDisplay();
-    elements.resignBtn.disabled = room.status !== "PLAYING" || role === "ESPECTADOR";
+    const canAct = room.status === "PLAYING" && role !== "ESPECTADOR";
+    elements.resignBtn.disabled = !canAct;
+    elements.drawBtn.disabled = !canAct;
 
     const totalMoves = room.moves.length;
     const isReplaying = state.replayIndex !== null && state.replayIndex < totalMoves;
@@ -262,7 +407,14 @@ function renderGameView() {
         ? getValidMovesForSquare(boardToRender, state.selectedSquare, room.moves)
         : [];
 
-    boardRenderer.render(boardToRender, isReplaying ? null : state.selectedSquare, lastMove, validMoves);
+    const checkedKingSquare = !isReplaying && room.inCheck
+        ? findKingSquare(boardToRender, room.currentTurn)
+        : null;
+
+    boardRenderer.render(boardToRender, isReplaying ? null : state.selectedSquare, lastMove, validMoves, {
+        flipped: state.boardFlipped,
+        checkedKingSquare
+    });
     renderMovesHistory(room.moves, activeMoveIndex);
 }
 
@@ -279,7 +431,7 @@ function renderMovesHistory(moves, activeMoveIndex) {
         if (idx + 1 === activeMoveIndex) {
             li.classList.add("active");
         }
-        const symbol = move.color === "White" ? "♔" : "♚";
+        const symbol = PIECE_SYMBOLS[move.piece] || (move.color === "White" ? "♔" : "♚");
         li.innerHTML = `
             <span><strong>#${move.moveNumber}</strong> ${symbol} ${move.from} → ${move.to}</span>
             <span class="hint">${move.player}</span>
@@ -291,6 +443,7 @@ function renderMovesHistory(moves, activeMoveIndex) {
         });
         elements.movesHistoryList.appendChild(li);
     });
+    elements.movesHistoryList.scrollTop = elements.movesHistoryList.scrollHeight;
 }
 
 async function handleSquareClick(coord) {
@@ -323,15 +476,69 @@ async function handleSquareClick(coord) {
 
     if (state.selectedSquare) {
         const from = state.selectedSquare;
-        state.selectedSquare = null;
-        try {
-            const updated = await useCases.makeMove(room.roomId, getPlayerName(), from, coord);
-            state.currentRoom = updated;
-            renderGameView();
-        } catch (error) {
-            showToast(error.message, true);
-            renderGameView();
+        const movingPiece = room.board[from];
+        const isPromotionMove = (movingPiece === "WhitePawn" && coord.endsWith("8"))
+            || (movingPiece === "BlackPawn" && coord.endsWith("1"));
+
+        if (isPromotionMove) {
+            const legal = getValidMovesForSquare(room.board, from, room.moves).some(m => m.coord === coord);
+            if (legal) {
+                state.pendingPromotion = { from, to: coord, color: myColor };
+                openPromotionModal(myColor);
+                return;
+            }
         }
+
+        state.selectedSquare = null;
+        await submitMove(from, coord, null);
+    }
+}
+
+function openPromotionModal(color) {
+    const buttons = elements.promotionModal.querySelectorAll(".promo-btn");
+    buttons.forEach(btn => {
+        const type = btn.dataset.piece;
+        btn.textContent = PIECE_SYMBOLS[`${color}${type}`] || "♕";
+    });
+    elements.promotionModal.classList.remove("hidden");
+}
+
+async function submitMove(from, to, promotion) {
+    const room = state.currentRoom;
+    if (!room) return;
+    const prevCount = room.moves.length;
+
+    try {
+        const updated = await useCases.makeMove(room.roomId, getPlayerName(), from, to, promotion);
+        const isBotGame = updated.whitePlayer === "ChessBot" || updated.blackPlayer === "ChessBot";
+        const isBotReply = isBotGame && updated.moves.length === prevCount + 2;
+
+        if (isBotReply) {
+            const botSide = updated.whitePlayer === "ChessBot" ? "White" : "Black";
+            const intermediateRoom = {
+                ...updated,
+                board: reconstructBoardAtMove(updated.moves, updated.moves.length - 1),
+                moves: updated.moves.slice(0, -1),
+                currentTurn: botSide,
+                status: "PLAYING",
+                inCheck: false
+            };
+            state.currentRoom = intermediateRoom;
+            sounds.playMove();
+            renderGameView();
+            elements.turnIndicator.textContent = "ChessBot pensando...";
+
+            setTimeout(() => {
+                if (state.currentRoom && state.currentRoom.roomId === updated.roomId) {
+                    handleRoomUpdateWithEffects(updated);
+                }
+            }, 550);
+        } else {
+            handleRoomUpdateWithEffects(updated);
+        }
+    } catch (error) {
+        showToast(error.message, true);
+        renderGameView();
     }
 }
 
@@ -339,9 +546,27 @@ async function handleCreateRoom() {
     try {
         const timeLimit = parseInt(elements.timeLimitSelect.value, 10) || 0;
         const vsBot = elements.opponentModeSelect.value === "bot";
-        const room = await useCases.createRoom(getPlayerName(), timeLimit, vsBot);
+        const color = elements.playerColorSelect.value;
+        const room = await useCases.createRoom(getPlayerName(), timeLimit, vsBot, color);
         showToast(vsBot ? "Partida contra ChessBot iniciada" : `Sala creada con código ${room.roomCode}`);
         enterRoom(room);
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+async function handleRematch() {
+    const oldRoom = state.currentRoom;
+    if (!oldRoom) return;
+    const role = getPlayerRole(oldRoom);
+    const nextColor = role === "BLANCAS" ? "Black" : "White";
+    const isBotGame = oldRoom.whitePlayer === "ChessBot" || oldRoom.blackPlayer === "ChessBot";
+    try {
+        const newRoom = await useCases.createRoom(getPlayerName(), oldRoom.timeLimitSeconds, isBotGame, nextColor);
+        showToast(isBotGame
+            ? "Revancha contra ChessBot iniciada con colores invertidos"
+            : `Nueva sala ${newRoom.roomCode} creada. Copia y envía el enlace a tu rival.`);
+        enterRoom(newRoom);
     } catch (error) {
         showToast(error.message, true);
     }
@@ -372,9 +597,19 @@ async function handleResign() {
     if (!state.currentRoom) return;
     try {
         const updated = await useCases.resignGame(state.currentRoom.roomId, getPlayerName());
-        state.currentRoom = updated;
-        showToast("Partida finalizada");
-        renderGameView();
+        handleRoomUpdateWithEffects(updated);
+        showToast("Has abandonado la partida");
+    } catch (error) {
+        showToast(error.message, true);
+    }
+}
+
+async function handleDraw() {
+    if (!state.currentRoom) return;
+    try {
+        const updated = await useCases.agreeDraw(state.currentRoom.roomId, getPlayerName());
+        handleRoomUpdateWithEffects(updated);
+        showToast("Partida finalizada en tablas");
     } catch (error) {
         showToast(error.message, true);
     }
@@ -400,6 +635,11 @@ function checkInviteLinkOnLoad() {
     }
 }
 
+elements.soundToggleBtn.addEventListener("click", () => {
+    const enabled = sounds.toggle();
+    elements.soundToggleBtn.textContent = enabled ? "🔊 Sonido" : "🔇 Silencio";
+});
+
 elements.adapterSelect.addEventListener("change", event => {
     const selected = event.target.value;
     useCases.setService(selected === "mock" ? mockAdapter : httpAdapter);
@@ -411,13 +651,32 @@ elements.adapterSelect.addEventListener("change", event => {
     }
 });
 
+elements.promotionModal.querySelectorAll(".promo-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+        if (!state.pendingPromotion) return;
+        const { from, to } = state.pendingPromotion;
+        const chosenPiece = btn.dataset.piece;
+        state.pendingPromotion = null;
+        state.selectedSquare = null;
+        elements.promotionModal.classList.add("hidden");
+        await submitMove(from, to, chosenPiece);
+    });
+});
+
+elements.flipBoardBtn.addEventListener("click", () => {
+    state.boardFlipped = !state.boardFlipped;
+    renderGameView();
+});
+
 elements.createRoomBtn.addEventListener("click", handleCreateRoom);
+elements.rematchBtn.addEventListener("click", handleRematch);
 elements.joinRoomBtn.addEventListener("click", () => handleJoinByCode(elements.roomCodeInput.value));
 elements.refreshRoomsBtn.addEventListener("click", refreshLobby);
 elements.clearHistoryBtn.addEventListener("click", handleClearHistory);
 elements.copyInviteBtn.addEventListener("click", handleCopyInviteLink);
 elements.backToLobbyBtn.addEventListener("click", leaveRoom);
 elements.resignBtn.addEventListener("click", handleResign);
+elements.drawBtn.addEventListener("click", handleDraw);
 
 elements.replayPrevBtn.addEventListener("click", () => {
     if (!state.currentRoom || state.currentRoom.moves.length === 0) return;

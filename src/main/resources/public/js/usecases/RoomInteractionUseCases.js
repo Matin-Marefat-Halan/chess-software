@@ -11,11 +11,11 @@ export class RoomInteractionUseCases {
         return await this.chessService.listRooms();
     }
 
-    async createRoom(playerName, timeLimitSeconds = 0, vsBot = false) {
+    async createRoom(playerName, timeLimitSeconds = 0, vsBot = false, color = "White") {
         if (!playerName || !playerName.trim()) {
             throw new Error("Introduce tu nombre de usuario antes de crear una sala");
         }
-        return await this.chessService.createRoom(playerName.trim(), timeLimitSeconds, vsBot);
+        return await this.chessService.createRoom(playerName.trim(), timeLimitSeconds, vsBot, color);
     }
 
     async joinRoom(roomCode, playerName) {
@@ -32,11 +32,11 @@ export class RoomInteractionUseCases {
         return await this.chessService.getRoomById(roomId);
     }
 
-    async makeMove(roomId, playerName, from, to) {
+    async makeMove(roomId, playerName, from, to, promotion = null) {
         if (!playerName || !playerName.trim()) {
             throw new Error("Debes identificarte para mover piezas");
         }
-        return await this.chessService.makeMove(roomId, playerName.trim(), from, to);
+        return await this.chessService.makeMove(roomId, playerName.trim(), from, to, promotion);
     }
 
     async resignGame(roomId, playerName) {
@@ -44,6 +44,13 @@ export class RoomInteractionUseCases {
             throw new Error("Debes identificarte para abandonar la partida");
         }
         return await this.chessService.resignGame(roomId, playerName.trim());
+    }
+
+    async agreeDraw(roomId, playerName) {
+        if (!playerName || !playerName.trim()) {
+            throw new Error("Debes identificarte para acordar tablas");
+        }
+        return await this.chessService.agreeDraw(roomId, playerName.trim());
     }
 
     async deleteRoom(roomId) {

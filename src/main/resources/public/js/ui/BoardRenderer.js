@@ -6,48 +6,60 @@ export class BoardRenderer {
         this.onSquareClick = onSquareClick;
     }
 
-    render(boardMap, selectedSquare, lastMove, validMoves = []) {
-        const validMap = new Map(validMoves.map(m => [m.coord, m.isCapture]));
+    render(boardMap, selectedSquare, lastMove, validMoves = [], options = {}) {
+        const { flipped = false, checkedKingSquare = null } = options;
         this.boardElement.innerHTML = "";
-        RANKS.forEach((rank, rankIdx) => {
-            FILES.forEach((file, fileIdx) => {
+        const validMap = new Map(validMoves.map(m => [m.coord, m.isCapture]));
+
+        const displayRanks = flipped ? [...RANKS].reverse() : RANKS;
+        const displayFiles = flipped ? [...FILES].reverse() : FILES;
+
+        displayRanks.forEach((rank, rIdx) => {
+            displayFiles.forEach((file, fIdx) => {
                 const coord = `${file}${rank}`;
-                const squareEl = document.createElement("div");
-                const isLight = (rankIdx + fileIdx) % 2 === 0;
-                squareEl.className = `square ${isLight ? "light" : "dark"}`;
+                const fileIndex = FILES.indexOf(file);
+                const rankIndex = RANKS.indexOf(rank);
+                const isLight = (fileIndex + rankIndex) % 2 === 0;
+
+                const sq = document.createElement("div");
+                sq.className = `square ${isLight ? "light" : "dark"}`;
+                sq.dataset.coord = coord;
 
                 if (selectedSquare === coord) {
-                    squareEl.classList.add("selected");
+                    sq.classList.add("selected");
                 }
                 if (lastMove && (lastMove.from === coord || lastMove.to === coord)) {
-                    squareEl.classList.add("last-move");
+                    sq.classList.add("last-move");
+                }
+                if (checkedKingSquare === coord) {
+                    sq.classList.add("in-check");
                 }
                 if (validMap.has(coord)) {
-                    squareEl.classList.add(validMap.get(coord) ? "valid-capture" : "valid-move");
+                    sq.classList.add(validMap.get(coord) ? "valid-capture" : "valid-move");
                 }
 
-                if (fileIdx === 0) {
-                    const rankLabel = document.createElement("span");
-                    rankLabel.className = "coord-label coord-rank";
-                    rankLabel.textContent = rank;
-                    squareEl.appendChild(rankLabel);
+                if (fIdx === 0) {
+                    const rankSpan = document.createElement("span");
+                    rankSpan.className = "coord-label coord-rank";
+                    rankSpan.textContent = rank;
+                    sq.appendChild(rankSpan);
                 }
-                if (rankIdx === 7) {
-                    const fileLabel = document.createElement("span");
-                    fileLabel.className = "coord-label coord-file";
-                    fileLabel.textContent = file;
-                    squareEl.appendChild(fileLabel);
+                if (rIdx === 7) {
+                    const fileSpan = document.createElement("span");
+                    fileSpan.className = "coord-label coord-file";
+                    fileSpan.textContent = file;
+                    sq.appendChild(fileSpan);
                 }
 
-                const pieceName = boardMap?.[coord];
-                if (pieceName && PIECE_SYMBOLS[pieceName]) {
+                const pieceKey = boardMap[coord];
+                if (pieceKey && PIECE_SYMBOLS[pieceKey]) {
                     const pieceSpan = document.createElement("span");
-                    pieceSpan.textContent = PIECE_SYMBOLS[pieceName];
-                    squareEl.appendChild(pieceSpan);
+                    pieceSpan.textContent = PIECE_SYMBOLS[pieceKey];
+                    sq.appendChild(pieceSpan);
                 }
 
-                squareEl.addEventListener("click", () => this.onSquareClick(coord));
-                this.boardElement.appendChild(squareEl);
+                sq.addEventListener("click", () => this.onSquareClick(coord));
+                this.boardElement.appendChild(sq);
             });
         });
     }

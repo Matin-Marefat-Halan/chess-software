@@ -19,19 +19,27 @@ public final class Board {
     }
 
     public Board move(Square from, Square to) {
-        return move(from, to, null);
+        return move(from, to, null, null);
     }
 
     public Board move(Square from, Square to, Move lastMove) {
+        return move(from, to, lastMove, null);
+    }
+
+    public Board move(Square from, Square to, Move lastMove, String promotion) {
         MovementValidator validator = new MovementValidator();
         if (!validator.isValidMove(this, from, to, lastMove)) {
-            throw new IllegalArgumentException("Invalid move from " + from.notation() + " to " + to.notation());
+            throw new IllegalArgumentException("Movimiento inválido de " + from.notation() + " a " + to.notation());
         }
+        return applyUnchecked(from, to, lastMove, promotion);
+    }
+
+    public Board applyUnchecked(Square from, Square to, Move lastMove, String promotion) {
         Piece moving = pieceAt(from);
         Piece targetBeforeMove = pieceAt(to);
         Map<Square, Piece> updated = new HashMap<>(pieces);
         updated.remove(from);
-        updated.put(to, promoteIfEligible(moving, to));
+        updated.put(to, resolvePromotion(moving, to, promotion));
 
         if (moving.isPawn() && from.file() != to.file() && targetBeforeMove == null) {
             Square capturedPawnSquare = new Square(to.file(), from.rank());
@@ -51,11 +59,17 @@ public final class Board {
         return new Board(updated);
     }
 
-    private Piece promoteIfEligible(Piece piece, Square destination) {
+    private Piece resolvePromotion(Piece piece, Square destination, String promotion) {
         if (piece == WhitePawn && destination.rank() == Rank.R8) {
+            if ("Rook".equalsIgnoreCase(promotion)) return WhiteRook;
+            if ("Bishop".equalsIgnoreCase(promotion)) return WhiteBishop;
+            if ("Knight".equalsIgnoreCase(promotion)) return WhiteKnight;
             return WhiteQueen;
         }
         if (piece == BlackPawn && destination.rank() == Rank.R1) {
+            if ("Rook".equalsIgnoreCase(promotion)) return BlackRook;
+            if ("Bishop".equalsIgnoreCase(promotion)) return BlackBishop;
+            if ("Knight".equalsIgnoreCase(promotion)) return BlackKnight;
             return BlackQueen;
         }
         return piece;
